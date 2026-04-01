@@ -1,0 +1,414 @@
+{
+  "recipe_version": "1.1.0",
+  "last_tested": "C2000WARE@6.00.00.00",
+  "board": {
+    "token": "/boards/LAUNCHXL_F28P65X",
+    "device": "F28P65x",
+    "package": "256ZEJ",
+    "part": "F28P65x_256ZEJ",
+    "context": "CPU1",
+    "cliArgs": "@cliArgs --board \"/boards/LAUNCHXL_F28P65X\" --device \"F28P65x\" --package \"256ZEJ\" --part \"F28P65x_256ZEJ\" --context \"CPU1\" --product \"C2000WARE@6.00.00.00\"",
+    "errorSignatures": [
+      {
+        "match": "No such resource: /LAUNCHXL-F28P65x.syscfg.json|LAUNCHXL-F28P65x: No such resource",
+        "fix": "Replace board token with /boards/LAUNCHXL_F28P65X (underscore + caps)."
+      }
+    ]
+  },
+  "workspace_rules": {
+    "editTarget": "workspace_copy",
+    "note": "Always edit the .syscfg inside the CCS workspace project (e.g., new_workspace/<project>), not the source-tree example."
+  },
+  "insertion": {
+    "import_anchor_regex": "^\\s*const\\s+memcfg\\s*=\\s*scripting\\.addModule\\(\"/driverlib/memcfg\\.js\"\\);$",
+    "import_anchor_fallback_regexes": [
+      "^\\s*const\\s+sysctl\\s*=\\s*scripting\\.addModule\\(\"/driverlib/sysctl\\.js\"\\);$",
+      "^\\s*const\\s+CMD\\s*=\\s*scripting\\.addModule\\(\"/utilities/cmd_tool/cmd_syscfg/source/CMD\"\\);$"
+    ],
+    "config_anchor_regex": "^\\s*CMD2\\.\\$name\\s*=\\s*\"generic_flash_lnk\";\\s*$",
+    "config_anchor_fallback_regexes": [
+      "^\\s*const\\s+CMD1\\s*=\\s*CMD\\.addInstance\\\\(\\\\);$",
+      "^\\s*const\\s+memcfg\\s*=\\s*scripting\\.addModule\\(\"/driverlib/memcfg\\.js\"\\);$"
+    ],
+    "ordering_notes": [
+      "Insert new module imports after existing imports but before configuration blocks.",
+      "Insert new config blocks after CMD/MEMCFG declarations for consistency."
+    ]
+  },
+  "globals": {
+    "idempotency": {
+      "detect_module_decl": "^\\s*const\\s+{module_var}\\s*=\\s*scripting\\.addModule\\(\"{module_path}\\.js\",\\s*\\{\\},\\s*false\\)\\s*;\\s*$",
+      "detect_instance_decl": "^\\s*const\\s+{instance_var}\\s*=\\s*{module_var}\\.addInstance\\(\\)\\s*;\\s*$",
+      "valid_property_regexes": {
+        "SCI_SCIA": [
+          "^\\s*sci1\\.\\$name\\s*=\\s*\\\"mySCI0\\\";\\s*$",
+          "^\\s*sci1\\.loopback\\s*=\\s*(true|false);\\s*$",
+          "^\\s*sci1\\.baudRates\\s*=\\s*\\d+;\\s*$",
+          "^\\s*sci1\\.sci\\.\\$assign\\s*=\\s*\\\"SCIA\\\";\\s*$",
+          "^\\s*sci1\\.sci\\.sci_rxPin\\.\\$assign\\s*=\\s*\\\"GPIO\\d+\\\";\\s*$",
+          "^\\s*sci1\\.sci\\.sci_txPin\\.\\$assign\\s*=\\s*\\\"GPIO\\d+\\\";\\s*$"
+        ],
+        "USB0": [
+          "^\\s*usb1\\.\\$name\\s*=\\s*\\\"myUSB0\\\";\\s*$",
+          "^\\s*usb1\\.registerInterrupts\\s*=\\s*(true|false);\\s*$",
+          "^\\s*usb1\\.USBInt\\.enableInterrupt\\s*=\\s*(true|false);\\s*$",
+          "^\\s*usb1\\.usb\\.\\$assign\\s*=\\s*\\\"USB0\\\";\\s*$",
+          "^\\s*usb1\\.usb\\.usbdmPin\\.\\$assign\\s*=\\s*\\\"GPIO\\d+\\\";\\s*$",
+          "^\\s*usb1\\.usb\\.usbdpPin\\.\\$assign\\s*=\\s*\\\"GPIO\\d+\\\";\\s*$"
+        ]
+      },
+      "remove_duplicates_action": "If duplicates found, keep the first occurrence and remove subsequent duplicates (module and instance).",
+      "replace_block_on_corruption": ["SCI_SCIA"]
+    },
+    "error_fixes": [
+      {
+        "match": "Identifier '.*' has already been declared",
+        "fix": "Remove duplicate const declarations for the conflicting symbol."
+      },
+      {
+        "match": "SyntaxError: Unexpected token '='.*sci1\\.",
+        "fix": "Replace corrupted lines with valid properties: $name, loopback, baudRates, sci.$assign, sci.sci_rxPin.$assign, sci.sci_txPin.$assign."
+      }
+    ],
+    "post_insert_validation": {
+      "ensure_unique_decls": true,
+      "required_properties": {
+        "SCI_SCIA": ["$name", "loopback", "baudRates", "sci.$assign", "sci.sci_rxPin.$assign", "sci.sci_txPin.$assign"],
+        "USB0": ["$name", "registerInterrupts", "USBInt.enableInterrupt", "usb.$assign", "usb.usbdmPin.$assign", "usb.usbdpPin.$assign"]
+      },
+      "pin_conflicts": [
+        {
+          "with": "USB0",
+          "module": "SCI_SCIA",
+          "pins": ["GPIO42", "GPIO43"],
+          "resolution": "move SCI_SCIA to RX=GPIO28, TX=GPIO29 deterministically (retain baudRates)."
+        }
+      ]
+    }
+  },
+  "peripherals": {
+    "SCI_SCIA": {
+      "module_path": "/driverlib/sci",
+      "module_var": "sci",
+      "instance_var": "sci1",
+      "instance_name": "mySCI0",
+      "imports": [
+        "const sci  = scripting.addModule(\"/driverlib/sci.js\", {}, false);",
+        "const sci1 = sci.addInstance();"
+      ],
+      "config": [
+        "sci1.$name                 = \"mySCI0\";",
+        "sci1.loopback              = false;",
+        "sci1.baudRates             = 115200;",
+        "sci1.sci.$assign           = \"SCIA\";",
+        "sci1.sci.sci_rxPin.$assign = \"GPIO43\";",
+        "sci1.sci.sci_txPin.$assign = \"GPIO42\";"
+      ],
+      "pins": {
+        "primary": { "rx": "GPIO43", "tx": "GPIO42" },
+        "alternates": [
+          { "rx": "GPIO28", "tx": "GPIO29", "note": "controlCARD-like mapping; valid fallback on F28P65x" }
+        ]
+      },
+      "conflict_policy": [
+        {
+          "conflicts_with": "USB0",
+          "pins": ["GPIO42", "GPIO43"],
+          "action": "reassign",
+          "to": { "rx": "GPIO28", "tx": "GPIO29" },
+          "note": "Deterministically move SCIA if USB0 is present on D+/D-."
+        }
+      ],
+      "c_helpers": {
+        "uart_write_string": "static void uart_write_string(const char *s) { while(s && *s){ SCI_writeCharBlockingFIFO(mySCI0_BASE, (uint16_t)(*s++)); } }"
+      },
+      "references": [
+        "driverlib/f28p65x/examples/c28x/sci/sci_ex1_loopback.syscfg",
+        "driverlib/f28p65x/examples/c28x/launchxl_f28p65x/launchxl_ex1_f28p65x_demo.c"
+      ]
+    },
+    "SPIA": {
+      "module_path": "/driverlib/spi",
+      "module_var": "spi",
+      "instance_var": "spi1",
+      "instance_name": "SPIA_controller",
+      "imports": [
+        "const spi  = scripting.addModule(\"/driverlib/spi.js\", {}, false);",
+        "const spi1 = spi.addInstance();"
+      ],
+      "config": [
+        "spi1.$name                     = \"SPIA_controller\";",
+        "spi1.mode                      = \"SPI_MODE_CONTROLLER\";",
+        "spi1.emulationMode             = \"SPI_EMULATION_FREE_RUN\";",
+        "spi1.bitRate                   = 1000000;",
+        "spi1.txFifo                    = \"SPI_FIFO_TX2\";",
+        "spi1.rxFifo                    = \"SPI_FIFO_RX2\";",
+        "spi1.spi.$assign               = \"SPIA\";",
+        "spi1.spi.spi_picoPin.$assign   = \"GPIO16\";",
+        "spi1.spi.spi_pociPin.$assign   = \"GPIO17\";",
+        "spi1.spi.spi_clkPin.$assign    = \"GPIO18\";",
+        "spi1.spi.spi_ptePin.$assign    = \"GPIO19\";"
+      ],
+      "references": [
+        "driverlib/f28p65x/examples/c28x/spi/spi_ex4_external_loopback_fifo_interrupts.syscfg"
+      ]
+    },
+    "SPIB": {
+      "module_path": "/driverlib/spi",
+      "module_var": "spi",
+      "instance_var": "spi2",
+      "instance_name": "SPIB_controller",
+      "imports": [
+        "const spi  = scripting.addModule(\"/driverlib/spi.js\", {}, false);",
+        "const spi2 = spi.addInstance();"
+      ],
+      "config": [
+        "spi2.$name                     = \"SPIB_controller\";",
+        "spi2.mode                      = \"SPI_MODE_CONTROLLER\";",
+        "spi2.bitRate                   = 500000;",
+        "spi2.txFifo                    = \"SPI_FIFO_TX2\";",
+        "spi2.rxFifo                    = \"SPI_FIFO_RX2\";",
+        "spi2.spi.$assign               = \"SPIB\";",
+        "spi2.spi.spi_picoPin.$assign   = \"GPIO24\";",
+        "spi2.spi.spi_pociPin.$assign   = \"GPIO25\";",
+        "spi2.spi.spi_clkPin.$assign    = \"GPIO26\";",
+        "spi2.spi.spi_ptePin.$assign    = \"GPIO27\";"
+      ],
+      "references": [
+        "driverlib/f28p65x/examples/c28x/spi/spi_ex4_external_loopback_fifo_interrupts.syscfg"
+      ]
+    },
+    "I2CA": {
+      "module_path": "/driverlib/i2c",
+      "module_var": "i2c",
+      "instance_var": "i2c1",
+      "instance_name": "myI2CA",
+      "imports": [
+        "const i2c  = scripting.addModule(\"/driverlib/i2c.js\", {}, false);",
+        "const i2c1 = i2c.addInstance();"
+      ],
+      "config": [
+        "i2c1.$name              = \"myI2CA\";",
+        "i2c1.i2c.$assign        = \"I2CA\";",
+        "i2c1.bitRate            = 100;",
+        "i2c1.i2c.sdaPin.$assign = \"GPIO32\";",
+        "i2c1.i2c.sclPin.$assign = \"GPIO33\";"
+      ],
+      "notes": "bitRate is in kHz (100 = 100 kHz).",
+      "references": [
+        "driverlib/f28p65x/examples/c28x/i2c/i2c_ex1_loopback.syscfg"
+      ]
+    },
+    "ADC_ADCA": {
+      "module_path": "/driverlib/adc",
+      "module_var": "adc",
+      "instance_var": "adc1",
+      "instance_name": "myADCA",
+      "imports": [
+        "const adc  = scripting.addModule(\"/driverlib/adc.js\", {}, false);",
+        "const adc1 = adc.addInstance();"
+      ],
+      "config": [
+        "adc1.$name          = \"myADCA\";",
+        "adc1.adc.$assign    = \"ADCA\";",
+        "// SOC/trigger/channel setup to be done in C or via additional SysConfig options"
+      ],
+      "references": [
+        "driverlib/f28p65x/examples/c28x/adc/adc_ex1_soc_software.syscfg"
+      ]
+    },
+    "EPWM1": {
+      "module_path": "/driverlib/epwm",
+      "module_var": "epwm",
+      "instance_var": "epwm1",
+      "instance_name": "myEPWM1",
+      "imports": [
+        "const epwm  = scripting.addModule(\"/driverlib/epwm.js\", {}, false);",
+        "const epwm1 = epwm.addInstance();"
+      ],
+      "config": [
+        "epwm1.$name        = \"myEPWM1\";",
+        "epwm1.epwm.$assign = \"EPWM1\";",
+        "// Pin suggestions: EPWM1A=GPIO0, EPWM1B=GPIO1 (adjust in GUI if needed)"
+      ],
+      "references": [
+        "driverlib/f28p65x/examples/c28x/epwm/epwm_ex1_trip_zone.syscfg"
+      ]
+    },
+    "ECAP1": {
+      "module_path": "/driverlib/ecap",
+      "module_var": "ecap",
+      "instance_var": "ecap1",
+      "instance_name": "myECAP1",
+      "imports": [
+        "const ecap  = scripting.addModule(\"/driverlib/ecap.js\", {}, false);",
+        "const ecap1 = ecap.addInstance();"
+      ],
+      "config": [
+        "ecap1.$name        = \"myECAP1\";",
+        "ecap1.ecap.$assign = \"ECAP1\";"
+      ],
+      "references": [
+        "driverlib/f28p65x/examples/c28x/ecap/ecap_ex2_capture_pwm.syscfg"
+      ]
+    },
+    "EQEP1": {
+      "module_path": "/driverlib/eqep",
+      "module_var": "eqep",
+      "instance_var": "eqep1",
+      "instance_name": "myEQEP1",
+      "imports": [
+        "const eqep  = scripting.addModule(\"/driverlib/eqep.js\", {}, false);",
+        "const eqep1 = eqep.addInstance();"
+      ],
+      "config": [
+        "eqep1.$name        = \"myEQEP1\";",
+        "eqep1.eqep.$assign = \"EQEP1\";"
+      ],
+      "references": [
+        "driverlib/f28p65x/examples/c28x/eqep/eqep_ex2_pos_speed.syscfg"
+      ]
+    },
+    "CPUTIMER0": {
+      "module_path": "/driverlib/cputimer",
+      "module_var": "cputimer",
+      "instance_var": "cputimer1",
+      "instance_name": "myCPUTIMER0",
+      "imports": [
+        "const cputimer  = scripting.addModule(\"/driverlib/cputimer.js\", {}, false);",
+        "const cputimer1 = cputimer.addInstance();"
+      ],
+      "config": [
+        "cputimer1.$name       = \"myCPUTIMER0\";",
+        "cputimer1.timerPeriod = 1000000;",
+        "// cputimer1.enableInterrupt = true;",
+        "// cputimer1.registerInterrupts = true;"
+      ],
+      "references": [
+        "driverlib/f28p65x/examples/c28x/timer/timer_ex1_cputimers_sysconfig.syscfg"
+      ]
+    },
+    "MCAN0": {
+      "module_path": "/driverlib/mcan",
+      "module_var": "mcan",
+      "instance_var": "mcan1",
+      "instance_name": "myMCAN0",
+      "imports": [
+        "const mcan  = scripting.addModule(\"/driverlib/mcan.js\", {}, false);",
+        "const mcan1 = mcan.addInstance();"
+      ],
+      "config": [
+        "mcan1.$name       = \"myMCAN0\";",
+        "mcan1.mcan.$assign = \"MCAN_A\";"
+      ],
+      "references": [
+        "driverlib/f28p65x/examples/c28x/mcan/mcan_ex3_loopback_syscfg.syscfg"
+      ]
+    },
+    "LINA": {
+      "module_path": "/driverlib/lin",
+      "module_var": "lin",
+      "instance_var": "lin1",
+      "instance_name": "myLINA",
+      "imports": [
+        "const lin  = scripting.addModule(\"/driverlib/lin.js\", {}, false);",
+        "const lin1 = lin.addInstance();"
+      ],
+      "config": [
+        "lin1.$name      = \"myLINA\";",
+        "lin1.lin.$assign = \"LINA\";"
+      ],
+      "references": [
+        "driverlib/f28p65x/examples/c28x/lin/lin_ex5_syscfg.syscfg"
+      ]
+    },
+    "FSI": {
+      "module_path": "/driverlib/fsi",
+      "module_var": "fsi",
+      "instance_var": "fsi1",
+      "instance_name": "myFSI",
+      "imports": [
+        "const fsi  = scripting.addModule(\"/driverlib/fsi.js\", {}, false);",
+        "const fsi1 = fsi.addInstance();"
+      ],
+      "config": [
+        "fsi1.$name    = \"myFSI\";",
+        "// TX/RX selection and pins to be chosen per design"
+      ],
+      "references": [
+        "driverlib/f28p65x/examples/c28x/fsi/fsi_ex3_loopback_dmacontrol.syscfg"
+      ]
+    },
+    "USB0": {
+      "module_path": "/driverlib/usb",
+      "module_var": "usb",
+      "instance_var": "usb1",
+      "instance_name": "myUSB0",
+      "imports": [
+        "const usb  = scripting.addModule(\"/driverlib/usb.js\", {}, false);",
+        "const usb1 = usb.addInstance();"
+      ],
+      "config": [
+        "usb1.$name                 = \"myUSB0\";",
+        "usb1.registerInterrupts    = true;",
+        "usb1.usb.$assign           = \"USB0\";",
+        "usb1.usb.usbdmPin.$assign  = \"GPIO42\";",
+        "usb1.usb.usbdpPin.$assign  = \"GPIO43\";",
+        "usb1.USBInt.enableInterrupt = true;"
+      ],
+      "conflicts": [
+        {
+          "with": "SCI_SCIA",
+          "pins": ["GPIO42", "GPIO43"],
+          "resolution": "If USB is active on 42/43, move SCIA to 28/29."
+        }
+      ],
+      "references": [
+        "driverlib/f28p65x/examples/c28x/usb/usb_ex1_dev_serial.syscfg",
+        "driverlib/f28p65x/examples/c28x/usb/usb_ex4_dev_bulk.syscfg"
+      ]
+    },
+    "DMA0": {
+      "module_path": "/driverlib/dma",
+      "module_var": "dma",
+      "instance_var": "dma1",
+      "instance_name": "myDMA0",
+      "imports": [
+        "const dma  = scripting.addModule(\"/driverlib/dma.js\", {}, false);",
+        "const dma1 = dma.addInstance();"
+      ],
+      "config": [
+        "dma1.$name                = \"myDMA0\";",
+        "dma1.useInterrupts        = true;",
+        "dma1.registerInterrupts   = true;",
+        "dma1.enableInterrupts     = true;"
+      ],
+      "references": [
+        "driverlib/f28p65x/examples/c28x/dma/dma_ex1_gsram_transfer.syscfg"
+      ]
+    },
+    "SDSPI": {
+      "note": "SPI-based SD card; verify actual module path and SPIC pin mux in specific example.",
+      "references": [
+        "driverlib/f28p65x/examples/c28x/sdspi/sd_fat32.syscfg"
+      ]
+    },
+    "LED_BOARD": {
+      "module_path": "/driverlib/board_components/led",
+      "module_var": "led",
+      "instance_var": "led1",
+      "instance_name": "myBoardLED0",
+      "imports": [
+        "const led  = scripting.addModule(\"/driverlib/board_components/led\", {}, false);",
+        "const led1 = led.addInstance();"
+      ],
+      "config": [
+        "led1.$name     = \"myBoardLED0\";",
+        "led1.$hardware = system.deviceData.board.components.D1;"
+      ],
+      "references": [
+        "driverlib/f28p65x/examples/c28x/led/led_ex1_blinky.syscfg"
+      ]
+    }
+  }
+}

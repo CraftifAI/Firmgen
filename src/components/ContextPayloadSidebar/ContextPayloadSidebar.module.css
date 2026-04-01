@@ -1,0 +1,203 @@
+.container {
+  /* Width is set inline via style prop for dynamic resizing */
+  min-width: 300px;
+  max-width: 800px;
+  height: 100%;
+  border-right: 1px solid var(--gray-6);
+  background: var(--gray-2);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+}
+
+.collapsedContainer {
+  width: 40px;
+  height: 100%;
+  border-right: 1px solid var(--gray-6);
+  background: var(--gray-2);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: var(--space-2);
+  flex-shrink: 0;
+}
+
+.header {
+  padding: var(--space-3);
+  background: var(--gray-3);
+  border-bottom: 1px solid var(--gray-6);
+  flex-shrink: 0;
+}
+
+.searchContainer {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--gray-6);
+  flex-shrink: 0;
+}
+
+.tokenStrip {
+  display: flex;
+  flex-direction: row;
+  gap: 0;
+  padding: var(--space-2) var(--space-3);
+  background: var(--gray-2);
+  border-bottom: 1px solid var(--gray-6);
+  flex-shrink: 0;
+}
+
+.tokenStripAgent {
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-1) var(--space-2);
+}
+
+.tokenStripDivider {
+  width: 1px;
+  background: var(--gray-6);
+  align-self: stretch;
+  margin: var(--space-1) 0;
+  flex-shrink: 0;
+}
+
+.tabsRoot {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.tabsList {
+  padding: var(--space-2) var(--space-3) 0;
+  border-bottom: 1px solid var(--gray-6);
+  flex-shrink: 0;
+}
+
+.tabContent {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.tabPane {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.messageCard {
+  padding: var(--space-2);
+  background: var(--gray-3);
+  border: 1px solid var(--gray-5);
+}
+
+.messageContent {
+  padding: var(--space-2);
+  background: var(--gray-1);
+  border-radius: var(--radius-2);
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.previewText {
+  font-family: var(--code-font-family);
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--gray-11);
+  word-break: break-word;
+}
+
+.toolCallsContainer {
+  padding: var(--space-2);
+  background: var(--purple-2);
+  border-radius: var(--radius-2);
+  margin-top: var(--space-1);
+}
+
+.jsonContainer {
+  padding: var(--space-3);
+}
+
+.progressBar {
+  width: 100%;
+  height: 8px;
+  background: var(--gray-4);
+  border-radius: var(--radius-1);
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  background: var(--blue-9);
+  transition: width 0.3s ease;
+}
+
+.tokenRow {
+  border-bottom: 1px solid var(--gray-4);
+}
+
+.tokenRow:last-child {
+  border-bottom: none;
+}
+
+.agentCard {
+  border-left: 3px solid var(--gray-6);
+  transition: border-color 0.2s;
+}
+
+.agentCard[data-agent="main"] {
+  border-left-color: var(--blue-8);
+}
+
+.agentCard[data-agent="subchat"] {
+  border-left-color: var(--orange-8);
+}
+
+.resizeHandle {
+  position: absolute;
+  right: -4px;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: ew-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  z-index: 10;
+  transition: background 0.2s;
+}
+
+.resizeHandle:hover {
+  background: var(--blue-4);
+}
+
+.resizeHandle:active {
+  background: var(--blue-6);
+}
+
+.resizeHandle svg {
+  width: 12px;
+  height: 12px;
+  color: var(--gray-9);
+  opacity: 0.5;
+}
+
+.resizeHandle:hover svg {
+  opacity: 1;
+}
+
+@media (max-width: 1400px) {
+  .container {
+    min-width: 300px;
+  }
+}
+
+@media (max-width: 1200px) {
+  .container {
+    min-width: 250px;
+  }
+}

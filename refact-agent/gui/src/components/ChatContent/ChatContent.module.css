@@ -1,0 +1,229 @@
+.content {
+  /* max-width: calc(100% - 12px); */
+}
+
+.file {
+  display: flex;
+  overflow: hidden;
+}
+
+.file_with_icon {
+  gap: 2px;
+  align-items: center;
+  justify-items: center;
+}
+
+.footer {
+  min-height: var(--space-5);
+}
+
+.userInput {
+  display: inline-flex;
+  flex-shrink: 1;
+  align-items: start;
+  flex-direction: column;
+  gap: 0;
+  text-align: left;
+  cursor: default;
+  user-select: auto;
+  max-width: calc(100% - var(--space-2) * 4.5);
+  padding: var(--space-2);
+  /* min-height: var(--base-button-height); */
+  height: auto;
+  white-space: pre;
+  border-radius: 16px;
+}
+
+.break_word {
+  word-break: break-word;
+}
+
+/* Matches ChatHistorySidebar .newChatButton — wraps user message text (not each line) */
+.userMessageBubble {
+  width: fit-content !important;
+  height: 70% !important;
+  /* background: linear-gradient(
+    135deg,
+    rgb(62 198 255 / 0.26),
+    rgb(12 74 110 / 0.52)
+  ); */
+  background: rgba(7, 72, 100, 0.26);
+  border: 1px solid rgb(62 198 255 / 0.52);
+  color: var(--palette-gray-500);
+  box-shadow: 0 0 16px rgb(62 198 255 / 0.18), 0 2px 8px rgb(0 0 0 / 0.3);
+  font-weight: 600;
+}
+
+.tool_result {
+  width: 100%;
+}
+
+.diff {
+  background: #252525;
+  max-width: unset;
+}
+
+.diff pre {
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow-x: visible !important;
+}
+
+.diff_pre {
+  margin: 0;
+  line-height: normal;
+  font-size: var(--font-size-1);
+}
+
+.diff_first:has(+ .diff_second) {
+  padding-bottom: 0 !important;
+}
+
+.diff_first:has(+ .diff_second) pre,
+.diff_first:has(+ .diff_second) pre > pre {
+  margin-bottom: 0;
+  padding-bottom: 0 !important;
+}
+
+.diff_first + .diff_second,
+.diff_first + .diff_second > pre,
+.diff_first + .diff_second > pre > pre {
+  margin-top: 0;
+  padding-top: 0 !important;
+}
+
+.diff pre > code > span {
+  min-width: 2.5em !important;
+}
+
+.diff_line > span {
+  font-family:
+    Consolas,
+    Monaco,
+    Lucida Console,
+    Liberation Mono,
+    DejaVu Sans Mono,
+    Bitstream Vera Sans Mono,
+    Courier New;
+  color: #c6cdd5;
+}
+
+.diff_line_number {
+  min-width: 50px;
+  padding-right: 8px;
+  text-align: end;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  -khtml-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+.diff_sign {
+  padding-left: 6px;
+  padding-right: 6px;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  -khtml-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+.diff_line_content {
+  flex: 1;
+}
+
+/** TODO: it seems the background doesn't grow inside of the scroll area */
+
+.tool_result {
+  margin-top: var(--space-1);
+  box-sizing: border-box;
+}
+
+/* ── Stage-colored tool call containers ── */
+
+.toolCallBox {
+  border-radius: 10px;
+  margin: 8px 0;
+  border: 1px solid var(--gray-7);
+  position: relative;
+  padding-top: 14px;
+  overflow: visible;
+}
+
+/* Kill every possible code-block / highlight background inside tool-call boxes */
+.toolCallBox pre,
+.toolCallBox code,
+.toolCallBox :global(.hljs),
+.toolCallBox :global(.rt-Code) {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+.toolCallBox_planning {
+  border-color: color-mix(in srgb, var(--stage-planning) 45%, transparent);
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--stage-planning) 6%, transparent);
+}
+
+.toolCallBox_generation {
+  border-color: color-mix(in srgb, var(--stage-code) 45%, transparent);
+  background: color-mix(in srgb, var(--stage-code) 6%, transparent);
+}
+
+.toolCallBox_compiling {
+  border-color: color-mix(in srgb, var(--stage-compiling) 45%, transparent);
+  background: color-mix(in srgb, var(--stage-compiling) 6%, transparent);
+}
+
+.toolCallBox_flash {
+  border-color: color-mix(in srgb, var(--stage-flashing) 45%, transparent);
+  background: color-mix(in srgb, var(--stage-flashing) 6%, transparent);
+}
+
+.toolCallBox_monitoring {
+  border-color: color-mix(in srgb, var(--stage-monitoring) 45%, transparent);
+  background: color-mix(in srgb, var(--stage-monitoring) 6%, transparent);
+}
+
+/* Fieldset-legend label that sits ON the top border */
+.toolCallStageLabel {
+  position: absolute;
+  top: -9px;
+  left: 16px;
+  padding: 0 8px;
+  background: var(--background, #0b1120);
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  z-index: 1;
+  line-height: 1;
+}
+
+.toolCallStageLabel_planning { color: var(--stage-planning-soft); }
+.toolCallStageLabel_generation { color: var(--stage-code-soft); }
+.toolCallStageLabel_compiling { color: var(--stage-compiling-soft); }
+.toolCallStageLabel_flash { color: var(--stage-flashing-soft); }
+.toolCallStageLabel_monitoring { color: var(--stage-monitoring-soft); }
+
+.toolCallStageDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* ── Stage-colored summary header tint ── */
+
+.toolSummary_planning { color: var(--stage-planning-soft); }
+.toolSummary_generation { color: var(--stage-code-soft); }
+.toolSummary_compiling { color: var(--stage-compiling-soft); }
+.toolSummary_flash { color: var(--stage-flashing-soft); }
+.toolSummary_monitoring { color: var(--stage-monitoring-soft); }

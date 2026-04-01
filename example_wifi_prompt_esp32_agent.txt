@@ -1,0 +1,41 @@
+Goal: Create an ESP-IDF project that connects to Wi-Fi in Station mode and drives a status LED.
+
+Wi-Fi credentials:
+SSID: "Hustle@Craftifi"
+PASSWORD: "Hustle@CFI"
+
+Requirements:
+1) Create a NEW ESP-IDF project.
+2) Use the official Wi-Fi station example from the given SDK as the reference (copy/adapt it into this project).
+3) Add LED status behavior:
+   - While the device is trying to connect to Wi-Fi (not yet connected + no IP), the LED must blink continuously.
+   - Once the device is connected to Wi-Fi AND has obtained an IP address, keep blinking for 5 more seconds.
+   - After those 5 seconds, stop blinking and keep the LED ON (steady).
+4) If Wi-Fi disconnects at any point:
+   - Resume blinking immediately.
+   - When it reconnects and gets IP again, repeat the “blink 5 seconds then steady ON” behavior.
+
+
+
+
+---------------------------------------------------Natural Language:
+
+
+I want to test Wi-Fi station mode on ESP-IDF. My Wi-Fi is:
+SSID: Hustle@Craftifi
+Password: Hustle@CFI
+
+Please create a new ESP-IDF project using the SDK’s Wi-Fi station example.
+
+Also, while it’s trying to connect to Wi-Fi, the LED should keep blinking. After it connects successfully, keep blinking for 5 seconds more and then keep the LED ON (no blinking). If Wi-Fi disconnects later, it should start blinking again and do the same behavior after reconnecting.
+
+--------------------------------------------------------------------------Non technicle user:
+
+Can you make an ESP-IDF project that connects my board to Wi-Fi?
+
+SSID: Hustle@Craftifi
+Password: Hustle@CFI
+
+While it’s connecting, I want the LED to blink. Once it connects, let it blink for 5 seconds and then keep it ON continuously. If the Wi-Fi drops, start blinking again until it reconnects (then same 5-second blink + steady ON).
+Use the Wi-Fi example from the SDK to do this and make it a fresh project.
+

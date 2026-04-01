@@ -1,0 +1,87 @@
+# ESP32 three-process flow: API (refactapi) -> Agent (refact-lsp) -> GUI (React)
+#
+# No Rust in Docker: build refact-lsp on the host and mount it. Run in three terminals for control.
+#
+# One-time setup:
+#   1. Build refact-lsp on the host (or download a pre-built binary):
+#      cd refact-agent/engine && cargo build --release && cd ../.. && mkdir -p bin && cp refact-agent/engine/target/release/refact-lsp bin/
+#   2. Put static vecdb in ./static:
+#      mkdir -p static && cp /path/to/esp32_s3_32n8r.vecdb static/
+#   3. Put ESP32 config in ./.cache/refact/esp32_tools.yaml (API reads it from there):
+#      mkdir -p .cache/refact && cp refact-agent/engine/src/tools/esp32_tools/sample_config.yaml .cache/refact/esp32_tools.yaml
+#   4. Set OPENAI_API_KEY (e.g. in .env or export OPENAI_API_KEY=sk-...).
+#
+# Run in three terminals (start API first, then agent, then GUI):
+#   Terminal 1: docker compose -f docker-compose.test.yml up api
+#   Terminal 2: docker compose -f docker-compose.test.yml up agent
+#   Terminal 3: docker compose -f docker-compose.test.yml up gui
+#
+# Then open http://localhost:5173. To update refact-lsp: replace ./bin/refact-lsp and restart the agent.
+
+version: "3.8"
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: refact-test-api
+    ports:
+      - "8002:8002"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - REFACT_CACHE_DIR=/root/.cache/refact
+    volumes:
+      - ./.cache/refact:/root/.cache/refact
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8002/refact-caps || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    container_name: refact-test-agent
+    command:
+      - --address-url
+      - http://api:8002
+      - --api-key
+      - ${OPENAI_API_KEY}
+      - --static-vecdb
+      - /data/esp32_s3_32n8r.vecdb
+      - --http-port
+      - "8486"
+      - --platform
+      - esp32
+      - --board-definition
+      - esp32-s3-devkitc-1-n32r8v
+      - --workspace-folder
+      - /workspace
+      - --inside-container
+      - --logs-stderr
+    volumes:
+      - ./bin:/opt/refact-lsp
+      - ./static:/data
+      - ./workspace:/workspace
+    ports:
+      - "8486:8486"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      # Optional: point ESP32 tools at the API container (avoids localhost inside container).
+      # Config is fetched from this full URL; no Rust binary rebuild needed.
+      - REFACT_ESP32_CONFIG_URL=http://api:8002/v1/esp32-config
+
+  gui:
+    build:
+      context: .
+      dockerfile: Dockerfile.gui
+    container_name: refact-test-gui
+    environment:
+      - VITE_REFACT_LSP_URL=http://localhost:8486
+      - REFACT_LSP_URL=http://localhost:8486
+      - VITE_EMBEDDED_MODE=true
+    ports:
+      - "5173:5173"

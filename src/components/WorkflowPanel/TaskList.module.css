@@ -1,0 +1,14 @@
+.taskList {
+  display: flex;
+  flex-direction: column;
+}
+
+.emptyList {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+}
+

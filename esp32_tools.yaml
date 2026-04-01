@@ -1,0 +1,108 @@
+# ESP32 Tools Configuration
+# This file configures the ESP32 development tools for the Refact agent
+
+esp32_config:
+  # ESP-IDF installation path
+  # After installing ESP-IDF, set this to your IDF_PATH
+  esp_idf_path: "/home/shubham/sdk_agent/ESP/esp-idf"
+  
+  # Projects directory path
+  # Where ESP32 projects will be created
+  projects_path: "/home/shubham/sdk_agent/ESP/projects"
+  
+  # Default target chip
+  # Options: esp32, esp32s3, esp32c3, esp32c6, esp32p4
+  default_target: "esp32p4"
+  
+  # Default serial port settings
+  default_serial_port: "/dev/ttyUSB0"
+  # Global default baud rate (used as a fallback)
+  default_baud_rate: 115200
+  # Optional operation-specific baud rates
+  # If not set, the tools fall back to default_baud_rate.
+  default_flash_baud_rate: 115200
+  default_monitor_baud_rate: 115200
+  
+  # Default flash settings
+  default_flash_mode: "dio"  # Options: qio, qout, dio, dout
+  default_flash_freq: "80m"  # Options: 80m, 40m, 26m, 20m
+  default_flash_size: "4MB"  # Options: 1MB, 2MB, 4MB, 8MB, 16MB
+  
+  # OTA Configuration
+  ota_enabled: false
+  ota_partition_scheme: "default"  # Options: default, ota_2app, factory_ota, large_spiffs
+  
+  # Cloud Configuration
+  cloud_provider: "none"  # Options: aws, azure, gcp, none
+  mqtt_broker: ""
+
+# Tool enable/disable settings
+tools:
+  esp32_project:
+    enabled: true
+  esp32_build:
+    enabled: true
+  esp32_device:
+    enabled: true
+  esp32_config:
+    enabled: true
+  esp32_component:
+    enabled: true
+  esp32_analyze:
+    enabled: true
+
+# Example project templates
+# These are relative to ESP-IDF examples directory
+example_templates:
+  # Get Started examples
+  blink: "get-started/blink"
+  hello_world: "get-started/hello_world"
+  
+  # Wi-Fi examples
+  wifi_station: "wifi/getting_started/station"
+  wifi_ap: "wifi/getting_started/softAP"
+  wifi_scan: "wifi/scan"
+  
+  # Bluetooth examples
+  bluetooth_ble: "bluetooth/bluedroid/ble/gatt_server"
+  bluetooth_classic: "bluetooth/bluedroid/classic_bt/bt_spp_acceptor"
+  
+  # Peripheral examples
+  gpio: "peripherals/gpio/generic_gpio"
+  uart: "peripherals/uart/uart_echo"
+  spi: "peripherals/spi_master"
+  i2c: "peripherals/i2c/i2c_self_test"
+  adc: "peripherals/adc/oneshot_read"
+  pwm: "peripherals/ledc/ledc_basic_config"
+  
+  # System examples
+  freertos: "system/freertos/real_time_stats"
+  nvs: "storage/nvs_rw_value"
+  spiffs: "storage/spiffsgen"
+  
+  # Network examples
+  http_client: "protocols/http_server/simple"
+  mqtt: "protocols/mqtt/tcp"
+  websocket: "protocols/websocket/server"
+  
+  # Security examples
+  mbedtls: "security/mbedtls"
+  
+  # ESP32-P4 specific examples (if available)
+  esp32p4_blink: "get-started/blink"  # Modify target in project
+
+# Common partition schemes
+partition_schemes:
+  default: "default"
+  ota_2app: "ota_2app"
+  factory_ota: "factory_ota"
+  large_spiffs: "large_spiffs"
+  huge_app: "huge_app"
+
+# Notes:
+# 1. After installing ESP-IDF, update esp_idf_path to your actual IDF_PATH
+# 2. Ensure ESP-IDF environment is set up (run . $IDF_PATH/export.sh)
+# 3. Update default_serial_port to match your device (check with 'ls /dev/tty*')
+# 4. For ESP32-P4, ensure you're using ESP-IDF v5.1 or later
+# 5. The projects_path will be created automatically if it doesn't exist
+

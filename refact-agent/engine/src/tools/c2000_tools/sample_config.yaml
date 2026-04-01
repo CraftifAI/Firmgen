@@ -1,0 +1,55 @@
+# C2000 Tools Configuration
+# This file configures the C2000 development tools for the Refact agent
+
+c2000_config:
+  # CCS installation path
+  ccs_path: "/home/user/ti/ccs2020/ccs"
+  
+  # CCS workspace path for projects
+  workspace_path: "/home/user/ti/ccs2020/ccs/example_workspace"
+  
+  # C2000Ware installation path
+  c2000ware_path: "/home/user/ti/C2000Ware_6_00_00_00"
+  
+  # Default UART settings
+  default_uart_device: "/dev/ttyACM0"
+  default_uart_baud: 115200
+  default_uart_parity: "odd"
+
+# Tool enable/disable settings
+tools:
+  c2000_project_create:
+    enabled: true
+  c2000_build:
+    enabled: true
+  c2000_flash:
+    enabled: true
+  c2000_uart_capture:
+    enabled: true
+  c2000_config_validate:
+    enabled: true
+  c2000_target_detect:
+    enabled: true
+  c2000_example_list:
+    enabled: true
+
+# Example projectspec paths for common examples
+example_paths:
+  # F28P65x LaunchPad examples
+  spi_loopback_launchpad: "$C2000WARE/driverlib/f28p65x/examples/c28x/spi/CCS/spi_ex1_loopback.projectspec"
+  sci_echoback_launchpad: "$C2000WARE/driverlib/f28p65x/examples/c28x/sci/CCS/sci_ex3_echoback.projectspec"
+  led_blinky_launchpad: "$C2000WARE/driverlib/f28p65x/examples/c28x/led/CCS/led_ex1_blinky.projectspec"
+  
+  # F28P65x controlCARD examples
+  spi_loopback_controlcard: "$C2000WARE/device_support/f28p65x/examples/cpu1/spi/CCS/spi_ex1_loopback.projectspec"
+  sci_echoback_controlcard: "$C2000WARE/device_support/f28p65x/examples/cpu1/sci/CCS/sci_ex1_echoback.projectspec"
+  led_blinky_controlcard: "$C2000WARE/device_support/f28p65x/examples/cpu1/led/CCS/led_ex1_blinky.projectspec"
+  
+  # Empty project template
+  empty_project: "$C2000WARE/training/device/f28p65x/empty_lab/empty_lab_launchpad.projectspec"
+
+
+
+
+
+

@@ -1,0 +1,254 @@
+{
+  "schema_version": "1.1",
+  "board_id": "esp32-s3-touch-lcd-4b",
+  "board_version": "0.9.0",
+  "name": "ESP32-S3-Touch-LCD-4B",
+  "variant": "N16R8",
+  "description": "Waveshare ESP32-S3-Touch-LCD-4B with ESP32-S3-WROOM-1-N16R8, 16MB Flash, 8MB PSRAM, onboard 4-inch touch LCD, PMU, IMU, RTC, audio codec, and IO expander. This definition is conservative and marks most board-wired GPIOs as restricted.",
+
+  "chip": {
+    "type": "esp32s3",
+    "min_revision": 0
+  },
+
+  "identification": {
+    "chip_type": "esp32s3",
+    "flash_size_range": ["16MB"],
+    "psram_present": true,
+    "psram_size": "8MB",
+    "flash_manufacturer_ids": [],
+    "flash_device_ids": []
+  },
+
+  "hardware": {
+    "flash": {
+      "size": "16MB",
+      "size_config": "CONFIG_ESPTOOLPY_FLASHSIZE_16MB",
+      "mode": "qio",
+      "mode_config": "CONFIG_ESPTOOLPY_FLASHMODE_QIO",
+      "freq": "80m",
+      "freq_config": "CONFIG_ESPTOOLPY_FLASHFREQ_80M"
+    },
+    "psram": {
+      "enabled": true,
+      "size": "8MB",
+      "type": "embedded",
+      "mode": "quad",
+      "mode_config": "CONFIG_SPIRAM_MODE_QUAD"
+    },
+    "uart_console": {
+      "tx": 43,
+      "rx": 44,
+      "uart": "uart0",
+      "notes": "Onboard CH343P USB-UART is connected to UART0."
+    },
+    "usb_jtag": {
+      "supported": true,
+      "d_minus": 19,
+      "d_plus": 20,
+      "notes": "Native ESP32-S3 USB is routed to the USB connector."
+    }
+  },
+
+  "gpio": {
+    "led": {
+      "pin": null,
+      "type": "backlight",
+      "driver": "external",
+      "notes": "LCD backlight is controlled through a board-level BL signal and power circuitry, not a simple user LED GPIO."
+    },
+    "button_boot": {
+      "pin": 0,
+      "type": "button",
+      "pull": "pullup",
+      "notes": "BOOT button / strapping pin."
+    },
+    "button_reset": {
+      "pin": null,
+      "type": "button",
+      "notes": "RESET is connected to EN/CHIP_PU, not a GPIO."
+    },
+
+    "safe_pins": [1, 2, 4, 5, 6, 7, 8, 15, 16, 17, 18],
+    "restricted_pins": [
+      0, 3, 9, 10, 11, 12, 13, 14,
+      19, 20, 21,
+      26, 27, 28, 29, 30, 31, 32,
+      35, 36, 37, 38, 39, 40, 41, 42,
+      43, 44, 45, 46, 47, 48
+    ],
+    "restricted_reasons": {
+      "0": "BOOT button / strapping pin; also board control use.",
+      "3": "Used by onboard LCD/control path in schematic; avoid generic reuse.",
+      "9": "Used by onboard LCD/control path.",
+      "10": "Used by onboard LCD/I2S/control path.",
+      "11": "Used by onboard LCD/I2S/control path.",
+      "12": "Used by onboard LCD/I2S/control path.",
+      "13": "Used by onboard LCD/control path.",
+      "14": "Used by onboard LCD/control path.",
+      "19": "Native USB D-.",
+      "20": "Native USB D+.",
+      "21": "Board-wired peripheral/control usage; avoid generic reuse.",
+      "26-32": "Reserved for flash/PSRAM on ESP32-S3-WROOM-1 module.",
+      "35-42": "Board-wired LCD/audio/peripheral signals per schematic; avoid generic reuse.",
+      "43": "UART0 TX to onboard CH343P.",
+      "44": "UART0 RX to onboard CH343P.",
+      "45": "Strapping pin / board-level usage; avoid unless fully verified.",
+      "46": "Strapping pin / board-level usage; avoid unless fully verified.",
+      "47": "Board-wired LCD/control usage.",
+      "48": "Board-wired LCD/control usage."
+    },
+    "notes": "This board consumes many GPIOs internally for LCD, touch, audio, PMU, IMU, RTC, and IO expander. Safe pins are intentionally conservative and should be rechecked against the final pin map before auto-generated firmware uses them."
+  },
+
+  "pwm": {
+    "defaults": {
+      "pin": 4,
+      "timer": 0,
+      "channel": 0,
+      "freq_hz": 5000,
+      "duty_resolution": 13,
+      "notes": "Conservative default only. Verify board routing before using PWM on any pin."
+    },
+    "alternate_pins": [1, 2, 4, 5, 6, 7, 8, 15, 16, 17, 18]
+  },
+
+  "adc": {
+    "defaults": {
+      "pin": 1,
+      "channel": "ADC1_CH0",
+      "attenuation": "11dB",
+      "width": 12,
+      "notes": "Conservative default. Verify that the selected pin is actually exposed and unused in your target design."
+    },
+    "adc1_pins": [1, 2, 4, 5, 6, 7, 8, 9, 10],
+    "adc2_pins": [11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
+    "notes": "ADC2 conflicts with Wi-Fi when active. Several ADC-capable pins are already board-wired, so treat this section as capability-level info, not guaranteed free pins."
+  },
+
+  "buses": {
+    "i2c_primary": {
+      "sda": null,
+      "scl": null,
+      "notes": "Board has a shared I2C-style control bus labeled AUDIO_SDA/AUDIO_SCL feeding IMU, RTC, PMU, and IO expander. Exact ESP32 GPIO mapping should be extracted carefully from the schematic before hardcoding."
+    },
+    "i2s_audio": {
+      "mclk": null,
+      "bclk": null,
+      "ws_lrc": null,
+      "dout": null,
+      "din": null,
+      "notes": "Board includes ES8311/ES7210 audio path with multiple I2S signals wired on-board; exact GPIO mapping should be confirmed before agent automation."
+    }
+  },
+
+  "onboard_peripherals": {
+    "display": {
+      "type": "rgb_lcd",
+      "size": "4inch",
+      "touch": true,
+      "interface": "parallel_rgb",
+      "notes": "LCD uses many dedicated RGB/control signals and should be treated as an onboard reserved subsystem."
+    },
+    "touch_panel": {
+      "type": "i2c_touch",
+      "interrupt": null,
+      "reset": null,
+      "notes": "Connector exposes TP_INT, TP_SDA, TP_SCL, TP_RST. Exact controller and final GPIO mapping should be verified from full board docs/library."
+    },
+    "imu": {
+      "model": "QMI8658A",
+      "bus": "i2c",
+      "address": "0x6B"
+    },
+    "rtc": {
+      "model": "PCF85063AT",
+      "bus": "i2c"
+    },
+    "io_expander": {
+      "model": "TCA9554PWR",
+      "bus": "i2c"
+    },
+    "pmu": {
+      "model": "AXP2101",
+      "bus": "i2c"
+    },
+    "usb_uart": {
+      "model": "CH343P"
+    },
+    "audio_codec": {
+      "dac_adc": "ES8311",
+      "adc": "ES7210"
+    }
+  },
+
+  "wifi": {
+    "station": {
+      "sdkconfig": {
+        "CONFIG_ESP_WIFI_ENABLED": "y",
+        "CONFIG_ESP_WIFI_STA_ENABLE": "y",
+        "CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM": "10",
+        "CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM": "32",
+        "CONFIG_ESP_WIFI_TX_BUFFER_TYPE": "1",
+        "CONFIG_ESP_WIFI_DYNAMIC_TX_BUFFER_NUM": "32"
+      }
+    }
+  },
+
+  "config_presets": {
+    "default": {
+      "description": "Standard configuration for ESP32-S3-Touch-LCD-4B",
+      "tags": ["standard", "display", "touch"],
+      "use_cases": ["general development", "display applications", "touch UI"],
+      "sdkconfig": {
+        "CONFIG_IDF_TARGET": "esp32s3",
+        "CONFIG_ESPTOOLPY_FLASHSIZE_16MB": "y",
+        "CONFIG_ESPTOOLPY_FLASHMODE_QIO": "y",
+        "CONFIG_ESPTOOLPY_FLASHFREQ_80M": "y",
+        "CONFIG_SPIRAM": "y",
+        "CONFIG_SPIRAM_MODE_QUAD": "y",
+        "CONFIG_ESP32S3_SPIRAM_SUPPORT": "y",
+        "CONFIG_SPIRAM_USE_MALLOC": "y"
+      }
+    },
+    "wifi_station": {
+      "extends": "default",
+      "description": "WiFi Station mode configuration",
+      "tags": ["wifi", "station"],
+      "use_cases": ["WiFi client applications"],
+      "sdkconfig": {
+        "CONFIG_ESP_WIFI_ENABLED": "y",
+        "CONFIG_ESP_WIFI_STA_ENABLE": "y"
+      }
+    },
+    "lcd_app": {
+      "extends": "default",
+      "description": "Display-oriented preset for LCD applications",
+      "tags": ["lcd", "gui", "touch"],
+      "use_cases": ["LVGL", "display UI", "touchscreen apps"],
+      "sdkconfig": {
+        "CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240": "y"
+      }
+    }
+  },
+
+  "required_components": [],
+  "conflicting_components": [],
+  "recommended_components": [
+    "esp_lcd",
+    "lvgl"
+  ],
+
+  "kb": {
+    "collection": "esp32-s3-touch-lcd-4b",
+    "pinout_doc": "01_board_docs/pinout_reference.md",
+    "board_summary_doc": "01_board_docs/board_summary.md",
+    "gpio_table_doc": "01_board_docs/gpio_pinout_esp32s3.inc",
+    "kconfig_symbols": "04_kconfig_symbols/config_symbols.jsonl"
+  },
+
+  "documentation": {
+    "schematic": "ESP32-S3-Touch-LCD-4B.pdf",
+    "vendor_wiki": "https://www.waveshare.com/wiki/ESP32-S3-Touch-LCD-4B"
+  }
+}

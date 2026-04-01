@@ -1,0 +1,30 @@
+{
+  "name": "craftifai-esp32-agent",
+  "version": "1.0.0",
+  "description": "CraftifAI ESP32 Agent — AI-powered firmware development desktop app",
+  "main": "main.js",
+  "author": "CraftifAI",
+  "license": "BSD-3-Clause",
+  "private": true,
+  "scripts": {
+    "build:gui": "npm --prefix ../refact-agent/gui run build:desktop",
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "dev:app": "npm run build:gui && electron . --dev",
+    "build": "electron-builder --linux",
+    "build:appimage": "electron-builder --linux AppImage",
+    "build:deb": "electron-builder --linux deb",
+    "build:all": "electron-builder --linux AppImage deb",
+    "dist:linux": "npm run build:gui && npm run build:all",
+    "build:win": "electron-builder --win",
+    "build:win-nsis": "electron-builder --win nsis",
+    "build:win-portable": "electron-builder --win portable",
+    "dist:win-portable": "npm run build:gui && npm run build:win-portable",
+    "build:win-all": "electron-builder --win nsis portable",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
+  }
+}

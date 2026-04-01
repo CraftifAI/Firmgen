@@ -1,0 +1,8 @@
+# Runtime only: no Rust build. refact-lsp binary must be mounted at /opt/refact-lsp/refact-lsp.
+# Example: mount host ./bin as /opt/refact-lsp (so host ./bin/refact-lsp is used).
+# Build the binary on the host: cd refact-agent/engine && cargo build --release && cp target/release/refact-lsp ../../bin/
+FROM ubuntu:22.04
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+ENTRYPOINT ["/opt/refact-lsp/refact-lsp"]

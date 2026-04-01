@@ -1,0 +1,69 @@
+{
+  "cloud_name": "Local OpenAI Proxy",
+  "endpoint_template": "/v1/completions",
+  "endpoint_style": "openai",
+  "endpoint_chat_passthrough": "/v1/chat/completions",
+  "tokenizer_path_template": "https://huggingface.co/$MODEL/resolve/main/tokenizer.json",
+  "code_completion_default_model": "gpt-5",
+  "code_completion_n_ctx": 2000000,
+  "code_chat_default_model": "gpt-5",
+  "models_dict_patch": {
+    "gpt-3.5-turbo": {
+      "n_ctx": 16000,
+      "supports_tools": true
+    },
+    "gpt-4o": {
+      "n_ctx": 128000,
+      "supports_tools": true
+    },
+    "gpt-4o-mini": {
+      "n_ctx": 128000,
+      "supports_tools": true
+    },
+    "gpt-4.1": {
+      "n_ctx": 1000000,
+      "supports_tools": true
+    },
+    "gpt-4.1-mini": {
+      "n_ctx": 1000000,
+      "supports_tools": true
+    },
+    "gpt-5": {
+      "n_ctx": 2000000,
+      "supports_tools": true
+    },
+    "gpt-5-mini": {
+      "n_ctx": 2000000,
+      "supports_tools": true
+    }
+  },
+  "chat_light_model": "gpt-4o-mini",
+  "chat_thinking_model": "gpt-5",
+  "default_embeddings_model": "text-embedding-3-small",
+  "endpoint_embeddings_template": "/v1/embeddings",
+  "endpoint_embeddings_style": "openai",
+  "size_embeddings": 1536,
+  "running_models": [
+    "gpt-5",
+    "gpt-5-mini",
+    "gpt-4.1",
+    "gpt-4.1-mini",
+    "gpt-4o",
+    "gpt-4o-mini"
+  ],
+  "support_metadata": true,
+  "metadata": {
+    "pricing": {
+      "gpt-3.5-turbo": { "prompt": 0.5, "generated": 1.5 },
+      "gpt-4o": { "prompt": 2.5, "generated": 10.0 },
+      "gpt-4o-mini": { "prompt": 0.15, "generated": 0.6 },
+      "gpt-4.1": { "prompt": 2.0, "generated": 8.0 },
+      "gpt-4.1-mini": { "prompt": 0.4, "generated": 1.6 },
+      "gpt-5": { "prompt": 3.0, "generated": 12.0 },
+      "gpt-5-mini": { "prompt": 0.8, "generated": 3.2 }
+    },
+    "features": []
+  }
+}
+
+

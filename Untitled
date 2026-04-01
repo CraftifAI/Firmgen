@@ -1,0 +1,1250 @@
+Build a smart irrigation controller that reads soil moisture levels, automatically turns on a water pump when the soil is too dry, publishes moisture data to the cloud periodically, and allows remote override of the pump from the cloud. The system should reconnect automatically if the network drops and operate reliably without blocking other tasks
+Great idea. I can build this as a robust ESP-IDF application with Wi‑Fi + MQTT, non-blocking FreeRTOS tasks, auto-reconnect, hysteresis-based pump control, and cloud override. Before I start, I need a few details:
+1. New vs Existing project
+Would you like me to create a NEW ESP-IDF project, or use/modify an EXISTING one in your workspace?
+2. Target board
+Please confirm the exact board. Is it ESP32-S3-DevKitM-1 (N16R8)? If different, specify the model.
+3. Sensor and pins
+Soil moisture sensor type: analog (capacitive) 0–3.3 V output, or digital/I2C?
+If analog: which GPIO is wired to the sensor output? (ESP32-S3 ADC pins differ from classic ESP32.)
+Pump control: which GPIO drives the relay/MOSFET? Is the input active-low or active-high?
+4. Wi‑Fi and cloud (MQTT)
+Wi‑Fi SSID and password.
+MQTT broker URI (e.g., mqtt://broker.hivemq.com or mqtts://...), port, TLS yes/no, username/password if needed.
+Base topic to use (e.g., home/garden/irrigation1).
+OK to default to JSON payloads like:
+Telemetry: { "moisture_pct": 42.3, "pump": "ON", "mode": "AUTO" }
+Command topic: .../cmd with payload "ON", "OFF", or "AUTO"?
+5. Control logic defaults (I'll apply these unless you prefer others)
+Publish interval: 30 s
+Moisture threshold: 35% (pump ON below this)
+Hysteresis: 5% (pump OFF above 40%)
+Minimum ON time: 20 s
+Minimum OFF time: 30 s
+Sensor read: median-of-5 samples every 2 s
+Failsafe: If Wi‑Fi/MQTT down, stay in AUTO and keep local control running
+Remote override timeout: if in ON/OFF mode, auto-return to AUTO after 30 minutes unless new command arrives
+If you're fine with the above, say "Use defaults" and provide:
+NEW or EXISTING (and path if existing)
+Board confirmation
+The 2–3 GPIO numbers (sensor ADC, pump control, optional status LED)
+Wi‑Fi SSID/password
+MQTT broker info (URI, TLS, creds, base topic)
+Note: I don't see version control here; would you like me to initialize git for this project?
+yes create the new project, same board
+SSID -> M32, Password - > Abhi1234
+mqtt broker url - > b745335a48254f229d60aad98846122d.s1.eu.hivemq.cloud
+id -> esp32_mqtt , password -> Abhi@123
+other things are ok
+Thanks — I'll create a new ESP‑IDF project for ESP32‑S3‑DevKitM‑1 (N16R8) with the defaults you approved. A couple of quick details needed to proceed: Open questions (required)
+1. GPIO pins
+Soil moisture sensor (analog) GPIO (ADC1-capable, e.g., GPIO4 on S3).
+Pump control GPIO (driving relay/MOSFET).
+Optional status LED GPIO (or skip).
+2. Pump driver polarity
+Is the relay/MOSFET input active‑HIGH (1 = ON) or active‑LOW (0 = ON)?
+3. MQTT security
+HiveMQ Cloud typically requires TLS on 8883. I'll use mqtts://b745335a48254f229d60aad98846122d.s1.eu.hivemq.cloud:8883 with username esp32_mqtt and password Abhi@123.
+I propose enabling ESP‑IDF's built‑in certificate bundle (no custom CA file needed). OK?
+Plan (once you confirm the above)
+Create new ESP‑IDF project (target: esp32s3).
+Files to add:
+main/app_config.h: Wi‑Fi SSID/password (M32 / Abhi1234), MQTT URI, topics, pins, thresholds, intervals.
+main/wifi_manager.c/.h: STA init, auto‑reconnect, event group.
+main/mqtt_client.c/.h: mqtts connection, auto‑reconnect, subscribe to base_topic/cmd, JSON publish to base_topic/tele.
+main/sensor.c/.h: ADC (oneshot driver), median‑of‑5 filtering, 0–100% mapping with calibration constants.
+main/pump.c/.h: GPIO control, active‑high/low.
+main/control.c/.h: Hysteresis + min ON/OFF timers, AUTO/ON/OFF modes, 30‑min override timeout, non‑blocking.
+main/main.c: App glue, tasks startup, NVS/Wi‑Fi/MQTT bring‑up.
+main/CMakeLists.txt: add components, require json.
+sdkconfig.defaults: enable mbedTLS certificate bundle for TLS, set reasonable MQTT buffer sizes.
+Behavior:
+Non‑blocking FreeRTOS tasks for sensor (2 s), control loop, MQTT publish (30 s), and event-driven command handling.
+Telemetry JSON: { "moisture_pct": 42.3, "pump": "ON|OFF", "mode": "AUTO|ON|OFF", "rssi": -60 }.
+Command topic payload: "ON", "OFF", or "AUTO"; override auto‑expires after 30 minutes.
+Failsafe: Local control keeps running if Wi‑Fi/MQTT drop; automatic reconnect.
+Success criteria
+Builds for ESP32‑S3 without warnings.
+Connects to Wi‑Fi, then to HiveMQ Cloud over TLS.
+Publishes telemetry every 30 s and reacts to commands.
+Pump turns ON below 35% (OFF above 40%) with min ON/OFF times respected.
+System remains responsive; no blocking loops.
+Does this align with your vision? If yes, please provide:
+Sensor ADC GPIO, pump GPIO, optional LED GPIO
+Pump polarity (active‑HIGH or active‑LOW)
+TLS with IDF certificate bundle: OK? (recommended)
+yes
+I will proceed to create a new ESP-IDF project for your ESP32-S3 DevKitM-1, using sensible default GPIOs and active-high pump control. Defaults used (can be changed later in main/app_config.h):
+Sensor ADC GPIO: 4 (ADC1)
+Pump GPIO: 13 (active-HIGH)
+Status LED: disabled (-1)
+MQTTS with IDF certificate bundle will be enabled. Now I'll generate the project and add the modules as planned.
+🔨esp32_project
+
+esp32_project(operation="create", project_name="smart_irrigation", template="get-started/blink", target="esp32s3")
+✓ Created project 'smart_irrigation' [esp32s3] from get-started/blink
+Project path: /home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation
+Suggested next steps:
+- esp32_build (Build the new project)
+🔨tree
+
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/app_config.h
+app_config.h ++++++++++++++++++++++++++++++++++++++++++++++
+
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/wifi_manager.h
+wifi_manager.h +++++++++++++++++++++++++++
+
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/wifi_manager.c
+wifi_manager.c +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/mqtt_client.h
+mqtt_client.h +++++++++++++++++++++++++++++
+
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/mqtt_client.c
+mqtt_client.c +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/sensor.h
+sensor.h +++++++++++++++++++
+
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/sensor.c
+sensor.c +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+🔨cat
+
+📎 CMakeLists.txt
+
+🔨cat
+
+📎 sdkconfig.defaults
+
+    
+Projects/smart_irrigation/sdkconfig.defaults:1-1
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/sdkconfig.defaults
+# Enable certificate bundle for TLS (HiveMQ Cloud)
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL=y
+# Keep MQTT v3.1.1
+CONFIG_MQTT_PROTOCOL_311=y
+sdkconfig.defaults ---++++++
+
+🔨mv
+
+mv(source="/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/mqtt_client.h", destination="/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/app_mqtt.h", overwrite=true)
+mqtt_client.h → app_mqtt.h
+
+🔨mv
+
+mqtt_client.c → app_mqtt.c
+
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/pump.h
+pump.h ++++++++++++++++++++
+
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/pump.c
+pump.c ++++++++++++++++++++++++++++++++++++++
+
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/control.h
+control.h +++++++++++++++++++++++
+
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/control.c
+control.c ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/main.c
+main.c +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/CMakeLists.txt
+idf_component_register(SRCS \
+    "main.c" \
+    "wifi_manager.c" \
+    "app_mqtt.c" \
+    "sensor.c" \
+    "pump.c" \
+    "control.c" \
+    INCLUDE_DIRS ".")
+CMakeLists.txt ---+++++++++
+
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/CMakeLists.txt
+idf_component_register(SRCS "blink_example_main.c"
+                       INCLUDE_DIRS ".")
+idf_component_register(SRCS \
+    "main.c" \
+    "wifi_manager.c" \
+    "app_mqtt.c" \
+    "sensor.c" \
+    "pump.c" \
+    "control.c" \
+    INCLUDE_DIRS ".")
+🔨cat
+
+📎 idf_component.yml
+
+    
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/idf_component.yml:1-1
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/idf_component.yml
+dependencies: {}
+idf_component.yml ---++
+
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/idf_component.yml
+dependencies:
+  espressif/led_strip: "^3.0.0"
+dependencies: {}
+🔨esp32_build
+
+esp32_build(operation="build", project_path="/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation", target="esp32s3")
+sdkconfig.defaults was modified but reconfigure failed. Please run 'idf.py reconfigure' manually. Error: CMake Error at /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/tools/cmake/component.cmake:231 (message):
+  CMake Warning (dev) at build_properties.temp.cmake:8:
+
+    Syntax Warning in cmake code at column 106
+
+  
+
+    Argument not separated from preceding token by whitespace.
+
+  Call Stack (most recent call first):
+
+    /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/tools/cmake/scripts/component_get_requirements.cmake:3 (include)
+
+  This warning is for project developers.  Use -Wno-dev to suppress it.
+
+
+
+  CMake Error at
+  /home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/CMakeLists.txt:1:
+
+
+    Parse error.  Function missing ending ")".  Instead found bad character
+    with text "\".
+
+  Call Stack (most recent call first):
+
+    /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/tools/cmake/scripts/component_get_requirements.cmake:107 (include)
+    /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/tools/cmake/scripts/component_get_requirements.cmake:160 (__component_get_requirements)
+
+  
+
+
+
+Call Stack (most recent call first):
+  /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/tools/cmake/build.cmake:730 (__component_get_requirements)
+  /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/tools/cmake/project.cmake:742 (idf_build_process)
+  CMakeLists.txt:8 (project)
+
+
+cmake failed with exit code 1, output of the command is in the /home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/build/log/idf_py_stderr_output_382976 and /home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/build/log/idf_py_stdout_output_382976
+🔨cat
+
+📎 CMakeLists.txt
+
+    
+Projects/smart_irrigation/main/CMakeLists.txt:1-7
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/CMakeLists.txt
+idf_component_register(
+    SRCS 
+        "main.c"
+        "wifi_manager.c"
+        "app_mqtt.c"
+        "sensor.c"
+        "pump.c"
+        "control.c"
+    INCLUDE_DIRS "."
+    REQUIRES esp_wifi esp_event esp_netif nvs_flash mqtt cjson
+)
+CMakeLists.txt ---------++++++++++++
+
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/CMakeLists.txt
+idf_component_register(SRCS \
+    "main.c" \
+    "wifi_manager.c" \
+    "app_mqtt.c" \
+    "sensor.c" \
+    "pump.c" \
+    "control.c" \
+    INCLUDE_DIRS ".")
+idf_component_register(
+    SRCS 
+        "main.c"
+        "wifi_manager.c"
+        "app_mqtt.c"
+        "sensor.c"
+        "pump.c"
+        "control.c"
+    INCLUDE_DIRS "."
+    REQUIRES esp_wifi esp_event esp_netif nvs_flash mqtt cjson
+)
+🔨esp32_build
+
+esp32_build(operation="reconfigure", project_path="/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation", target="esp32s3")
+Reconfigure failed while propagating sdkconfig.defaults to sdkconfig. This ensures changes in sdkconfig.defaults are applied to the generated sdkconfig file. Error: CMake Error at /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/tools/cmake/build.cmake:378 (message):
+  Failed to resolve component 'mqtt' required by component 'main': unknown
+  name.
+Call Stack (most recent call first):
+  /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/tools/cmake/build.cmake:421 (__build_resolve_and_add_req)
+  /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/tools/cmake/build.cmake:751 (__build_expand_requirements)
+  /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/tools/cmake/project.cmake:742 (idf_build_process)
+  CMakeLists.txt:8 (project)
+
+
+[0;33mHINT: The component 'mqtt' could not be found. This could be because: component name was misspelled, the component was not added to the build, the component has been moved to the IDF component manager, the component has been removed and refactored into some other component or the component may not be supported by the selected target.
+Please look out for component in 'https://components.espressif.com' and add using 'idf.py add-dependency' command.
+Refer to the migration guide for more details about moved components.
+Refer to the build-system guide for more details about how components are found and included in the build.[0m
+cmake failed with exit code 1, output of the command is in the /home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/build/log/idf_py_stderr_output_383323 and /home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/build/log/idf_py_stdout_output_383323
+🔨esp32_component
+
+esp32_component(operation="search", project_path="/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation", query="mqtt")
+✓ Found 20 component(s) for 'mqtt'
+Suggested next steps:
+- esp32_component (Add a component from search results)
+🔨esp32_component
+
+esp32_component(operation="add", project_path="/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation", component="espressif/mqtt")
+✓ Added component: espressif/mqtt
+Suggested next steps:
+- esp32_build (Rebuild project with new component)
+🔨esp32_build
+
+esp32_build(operation="reconfigure", project_path="/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation", target="esp32s3")
+Reconfigure failed while propagating sdkconfig.defaults to sdkconfig. This ensures changes in sdkconfig.defaults are applied to the generated sdkconfig file. Error: CMake Error at /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/tools/cmake/build.cmake:378 (message):
+  Failed to resolve component 'cjson' required by component 'main': unknown
+  name.
+Call Stack (most recent call first):
+  /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/tools/cmake/build.cmake:421 (__build_resolve_and_add_req)
+  /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/tools/cmake/build.cmake:751 (__build_expand_requirements)
+  /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/tools/cmake/project.cmake:742 (idf_build_process)
+  CMakeLists.txt:8 (project)
+
+
+[0;33mHINT: The component 'cjson' could not be found. This could be because: component name was misspelled, the component was not added to the build, the component has been moved to the IDF component manager, the component has been removed and refactored into some other component or the component may not be supported by the selected target.
+Please look out for component in 'https://components.espressif.com' and add using 'idf.py add-dependency' command.
+Refer to the migration guide for more details about moved components.
+Refer to the build-system guide for more details about how components are found and included in the build.[0m
+cmake failed with exit code 1, output of the command is in the /home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/build/log/idf_py_stderr_output_383910 and /home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/build/log/idf_py_stdout_output_383910
+🔨esp32_component
+
+esp32_component(operation="add", project_path="/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation", component="cJSON")
+✓ Added component: cJSON
+Suggested next steps:
+- esp32_build (Rebuild project with new component)
+🔨esp32_build
+
+esp32_build(operation="reconfigure", project_path="/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation", target="esp32s3")
+Reconfigure failed while propagating sdkconfig.defaults to sdkconfig. This ensures changes in sdkconfig.defaults are applied to the generated sdkconfig file. Error: CMake Error at /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/tools/cmake/build.cmake:378 (message):
+  Failed to resolve component 'cjson' required by component 'main': unknown
+  name.
+Call Stack (most recent call first):
+  /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/tools/cmake/build.cmake:421 (__build_resolve_and_add_req)
+  /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/tools/cmake/build.cmake:751 (__build_expand_requirements)
+  /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/tools/cmake/project.cmake:742 (idf_build_process)
+  CMakeLists.txt:8 (project)
+
+
+[0;33mHINT: The component 'cjson' could not be found. This could be because: component name was misspelled, the component was not added to the build, the component has been moved to the IDF component manager, the component has been removed and refactored into some other component or the component may not be supported by the selected target.
+Please look out for component in 'https://components.espressif.com' and add using 'idf.py add-dependency' command.
+Refer to the migration guide for more details about moved components.
+Refer to the build-system guide for more details about how components are found and included in the build.[0m
+cmake failed with exit code 1, output of the command is in the /home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/build/log/idf_py_stderr_output_384190 and /home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/build/log/idf_py_stdout_output_384190
+🔨tree
+
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/CMakeLists.txt
+idf_component_register(
+    SRCS 
+        "main.c"
+        "wifi_manager.c"
+        "app_mqtt.c"
+        "sensor.c"
+        "pump.c"
+        "control.c"
+    INCLUDE_DIRS "."
+    REQUIRES esp_wifi esp_event esp_netif nvs_flash mqtt cJSON
+)
+CMakeLists.txt --++
+
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/CMakeLists.txt
+    REQUIRES esp_wifi esp_event esp_netif nvs_flash mqtt cjson
+    REQUIRES esp_wifi esp_event esp_netif nvs_flash mqtt cJSON
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/app_mqtt.c
+#include <stdio.h>
+#include <string.h>
+#include "esp_log.h"
+#include "mqtt_client.h"
+#include "wifi_manager.h"
+#include "app_config.h"
+#include "esp_event.h"
+#include "cJSON.h"
+#include "esp_tls.h"
+#include "esp_wifi.h"
+
+🔨esp32_build
+
+esp32_build(operation="reconfigure", project_path="/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation", target="esp32s3")
+✓ Project reconfigured successfully. sdkconfig.defaults was recently modified. Propagating sdkconfig.defaults to autogenerated sdkconfig
+🔨esp32_build
+
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/CMakeLists.txt
+idf_component_register(
+    SRCS 
+        "main.c"
+        "wifi_manager.c"
+        "app_mqtt.c"
+        "sensor.c"
+        "pump.c"
+        "control.c"
+    INCLUDE_DIRS "."
+    REQUIRES esp_wifi esp_event esp_netif nvs_flash mqtt cJSON esp-tls esp_adc driver esp_timer
+)
+CMakeLists.txt --++
+
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/CMakeLists.txt
+    REQUIRES esp_wifi esp_event esp_netif nvs_flash mqtt cJSON
+    REQUIRES esp_wifi esp_event esp_netif nvs_flash mqtt cJSON esp-tls esp_adc driver esp_timer
+🔨esp32_build
+
+esp32_build(operation="build", project_path="/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation", target="esp32s3")
+✗ Build failed: 2 errors: 2 missing_header
+Executing action: all (aliases: build)
+Running make in directory /home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/build
+Executing "make -j 14 all"...
+-- Component directory /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/idf_test does not contain a CMakeLists.txt file. No component will be added
+-- Component directory /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/mqtt does not contain a CMakeLists.txt file. No component will be added
+-- Minimal build - ON
+-- git rev-parse returned 'fatal: not a git repository (or any of the parent directories): .git'
+-- Could not use 'git describe' to determine PROJECT_VER.
+-- Building ESP-IDF components for target esp32s3
+NOTICE: Processing 3 dependencies:
+NOTICE: [1/3] espressif/cJSON (1.7.19~1)
+NOTICE: [2/3] espressif/mqtt (1.0.0)
+NOTICE: [3/3] idf (6.1.0)
+-- ESP-TEE is currently supported only on the esp32c6;esp32h2;esp32c5;esp32c61 SoCs
+-- KCONFIG_REPORT_VERBOSITY not set, using default
+-- Project sdkconfig file /home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/sdkconfig
+Loading defaults file /home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/sdkconfig.defaults...
+Loading defaults file /home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/sdkconfig.defaults.esp32s3...
+-- Compiler supported targets: xtensa-esp-elf
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- App "blink" version: 1
+-- Setting up mbedtls configuration
+-- Linkage type is PUBLIC
+-- Adding linker script /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_hal_wdt/esp32s3/rom.wdt.ld
+-- Adding linker script /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_system/ld/esp32s3/memory.ld.in
+--   -> Preprocessing .in script: /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_system/ld/esp32s3/memory.ld.in
+-- Adding linker script /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_system/ld/esp32s3/sections.ld.in
+--   -> Preprocessing .in script: /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_system/ld/esp32s3/sections.ld.in
+--   -> Applying ldgen processing: /home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/build/esp-idf/esp_system/ld/sections.ld.in
+-- Adding linker script /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_rom/esp32s3/ld/esp32s3.rom.ld
+-- Adding linker script /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_rom/esp32s3/ld/esp32s3.rom.api.ld
+-- Adding linker script /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_rom/esp32s3/ld/esp32s3.rom.bt_funcs.ld
+-- Adding linker script /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_rom/esp32s3/ld/esp32s3.rom.libgcc.ld
+-- Adding linker script /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_rom/esp32s3/ld/esp32s3.rom.version.ld
+-- Adding linker script /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_rom/esp32s3/ld/esp32s3.rom.ble_master.ld
+-- Adding linker script /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_rom/esp32s3/ld/esp32s3.rom.ble_50.ld
+-- Adding linker script /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_rom/esp32s3/ld/esp32s3.rom.ble_smp.ld
+-- Adding linker script /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_rom/esp32s3/ld/esp32s3.rom.ble_dtm.ld
+-- Adding linker script /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_rom/esp32s3/ld/esp32s3.rom.ble_test.ld
+-- Adding linker script /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_rom/esp32s3/ld/esp32s3.rom.ble_scan.ld
+-- Adding linker script /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_rom/esp32s3/ld/esp32s3.rom.libc.ld
+-- Adding linker script /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/soc/esp32s3/ld/esp32s3.peripherals.ld
+-- Components: app_update bootloader bootloader_support cxx driver efuse esp-tls esp_adc esp_app_format esp_blockdev esp_bootloader_format esp_coex esp_common esp_driver_dma esp_driver_gpio esp_driver_uart esp_driver_usb_serial_jtag esp_event esp_hal_ana_conv esp_hal_clock esp_hal_dma esp_hal_gpio esp_hal_gpspi esp_hal_i2c esp_hal_mspi esp_hal_pmu esp_hal_rtc_timer esp_hal_security esp_hal_timg esp_hal_touch_sens esp_hal_twai esp_hal_uart esp_hal_usb esp_hal_wdt esp_hw_support esp_libc esp_mm esp_netif esp_netif_stack esp_partition esp_phy esp_pm esp_psram esp_ringbuf esp_rom esp_security esp_stdio esp_system esp_timer esp_usb_cdc_rom_console esp_wifi espressif__cJSON espressif__mqtt esptool_py freertos hal heap http_parser log lwip main mbedtls nvs_flash nvs_sec_provider partition_table pthread soc spi_flash tcp_transport vfs wpa_supplicant xtensa
+-- Component paths: /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/app_update /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/bootloader /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/bootloader_support /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/cxx /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/driver /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/efuse /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp-tls /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_adc /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_app_format /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_blockdev /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_bootloader_format /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_coex /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_common /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_driver_dma /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_driver_gpio /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_driver_uart /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_driver_usb_serial_jtag /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_event /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_hal_ana_conv /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_hal_clock /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_hal_dma /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_hal_gpio /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_hal_gpspi /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_hal_i2c /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_hal_mspi /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_hal_pmu /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_hal_rtc_timer /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_hal_security /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_hal_timg /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_hal_touch_sens /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_hal_twai /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_hal_uart /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_hal_usb /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_hal_wdt /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_hw_support /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_libc /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_mm /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_netif /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_netif_stack /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_partition /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_phy /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_pm /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_psram /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_ringbuf /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_rom /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_security /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_stdio /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_system /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_timer /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_usb_cdc_rom_console /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_wifi /home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/managed_components/espressif__cJSON /home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/managed_components/espressif__mqtt /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esptool_py /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/freertos /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/hal /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/heap /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/http_parser /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/log /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/lwip /home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/mbedtls /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/nvs_flash /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/nvs_sec_provider /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/partition_table /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/pthread /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/soc /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/spi_flash /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/tcp_transport /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/vfs /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/wpa_supplicant /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/xtensa
+-- Configuring done (6.1s)
+-- Generating done (0.4s)
+-- Build files have been written to: /home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/build
+[  0%] Built target sections_ld_in_preprocess
+[  0%] Built target partition_table_bin
+[  0%] Built target _project_elf_src
+[  0%] Built target custom_bundle
+[  0%] Built target memory_ld_in_preprocess
+[  0%] Performing build step for 'bootloader'
+[  1%] Built target __idf_esp-tls
+[  1%] Built target __idf_http_parser
+[  2%] Built target __idf_esp_wifi
+[  3%] Built target __idf_esp_coex
+-- Component directory /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/idf_test does not contain a CMakeLists.txt file. No component will be added
+-- Component directory /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/mqtt does not contain a CMakeLists.txt file. No component will be added
+[ 13%] Built target __idf_wpa_supplicant
+[ 15%] Built target __idf_esp_netif
+[ 26%] Built target __idf_lwip
+[ 27%] Built target __idf_vfs
+[ 28%] Built target __idf_esp_driver_usb_serial_jtag
+[ 28%] Built target __idf_esp_driver_uart
+[ 28%] Built target __idf_esp_psram
+[ 29%] Built target __idf_esp_ringbuf
+[ 30%] Built target __idf_esp_phy
+[ 32%] Built target __idf_nvs_flash
+[ 32%] Built target __idf_nvs_sec_provider
+[ 32%] Built target __idf_esp_event
+[ 34%] Built target __idf_log
+[ 34%] Built target __idf_cxx
+[ 35%] Built target __idf_pthread
+[ 38%] Built target __idf_esp_libc
+[ 40%] Built target __idf_freertos
+-- Minimal build - OFF
+[ 46%] Built target __idf_esp_hw_support
+[ 47%] Built target __idf_esp_hal_touch_sens
+[ 47%] Built target __idf_esp_hal_pmu
+[ 47%] Built target __idf_esp_hal_usb
+[ 48%] Built target __idf_esp_hal_gpio
+[ 50%] Built target __idf_soc
+[ 51%] Built target __idf_heap
+[ 52%] Built target __idf_hal
+[ 53%] Built target __idf_esp_rom
+[ 53%] Built target __idf_esp_common
+-- Building ESP-IDF components for target esp32s3
+[ 58%] Built target __idf_esp_system
+[ 61%] Built target __idf_spi_flash
+[ 63%] Built target __idf_bootloader_support
+[ 64%] Built target __idf_esp_hal_ana_conv
+[ 65%] Built target __idf_esp_hal_wdt
+[ 70%] Built target tfpsacrypto
+[ 73%] Built target mbedtls
+[ 75%] Built target mbedx509
+[ 82%] Built target builtin
+[ 82%] Built target p256m
+[ 82%] Built target everest
+[ 82%] Built target __idf_mbedtls
+[ 83%] Built target __idf_esp_driver_dma
+[ 83%] Built target __idf_esp_mm
+-- ESP-TEE is currently supported only on the esp32c6;esp32h2;esp32c5;esp32c61 SoCs
+[ 83%] Built target __idf_esp_pm
+[ 84%] Built target __idf_esp_hal_uart
+[ 85%] Built target __idf_esp_driver_gpio
+[ 86%] Built target __idf_esp_security
+[ 87%] Built target __idf_esp_timer
+[ 87%] Built target __idf_esp_hal_timg
+[ 88%] Built target __idf_efuse
+[ 88%] Built target __idf_esp_partition
+[ 88%] Built target __idf_app_update
+[ 88%] Built target __idf_esp_bootloader_format
+[ 88%] Built target __idf_esp_app_format
+Truncated: too many tokens
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/sensor.c
+#include <string.h>
+#include "esp_log.h"
+#include "esp_adc/adc_oneshot.h"
+#include "esp_adc/adc_cali.h"
+#include "esp_adc/adc_cali_scheme.h"
+#include "app_config.h"
+sensor.c --
+
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/sensor.c
+#include "driver/adc.h"
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/app_mqtt.c
+#include "mqtt_client.h" // from espressif/mqtt component
+app_mqtt.c --++
+
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/app_mqtt.c
+#include "mqtt_client.h"
+#include "mqtt_client.h" // from espressif/mqtt component
+🔨esp32_build
+
+esp32_build(operation="build", project_path="/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation", target="esp32s3")
+✗ Build failed: 1 errors: 1 missing_header
+Executing action: all (aliases: build)
+Running make in directory /home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/build
+Executing "make -j 14 all"...
+[  0%] Built target sections_ld_in_preprocess
+[  0%] Built target memory_ld_in_preprocess
+[  0%] Built target partition_table_bin
+[  0%] Built target custom_bundle
+[  0%] Built target _project_elf_src
+[  1%] Built target __idf_esp-tls
+[  1%] Performing build step for 'bootloader'
+[  1%] Built target __idf_http_parser
+[  1%] Built target _project_elf_src
+[  7%] Built target __idf_log
+[  2%] Built target __idf_esp_wifi
+[  8%] Built target bootloader_ld_in_preprocess
+[  3%] Built target __idf_esp_coex
+[ 16%] Built target __idf_esp_rom
+[ 17%] Built target __idf_esp_common
+[ 13%] Built target __idf_wpa_supplicant
+[ 24%] Built target __idf_esp_hw_support
+[ 15%] Built target __idf_esp_netif
+[ 25%] Built target __idf_esp_system
+[ 31%] Built target __idf_efuse
+[ 26%] Built target __idf_lwip
+[ 46%] Built target __idf_bootloader_support
+[ 27%] Built target __idf_vfs
+[ 48%] Built target __idf_esp_security
+[ 50%] Built target __idf_esp_hal_security
+[ 28%] Built target __idf_esp_driver_usb_serial_jtag
+[ 55%] Built target __idf_esp_hal_ana_conv
+[ 28%] Built target __idf_esp_driver_uart
+[ 28%] Built target __idf_esp_psram
+[ 58%] Built target __idf_esp_hal_uart
+[ 29%] Built target __idf_esp_ringbuf
+[ 61%] Built target __idf_esp_hal_wdt
+[ 63%] Built target __idf_esp_hal_timg
+[ 30%] Built target __idf_esp_phy
+[ 64%] Built target __idf_esp_bootloader_format
+[ 32%] Built target __idf_nvs_flash
+[ 65%] Built target __idf_spi_flash
+[ 32%] Built target __idf_nvs_sec_provider
+[ 66%] Built target __idf_esp_hal_mspi
+[ 32%] Built target __idf_esp_event
+[ 67%] Built target __idf_esp_hal_clock
+[ 34%] Built target __idf_log
+[ 72%] Built target __idf_esp_hal_gpspi
+[ 34%] Built target __idf_cxx
+[ 75%] Built target __idf_esp_hal_dma
+[ 35%] Built target __idf_pthread
+[ 77%] Built target __idf_micro-ecc
+[ 38%] Built target __idf_esp_libc
+[ 79%] Built target __idf_esp_hal_pmu
+[ 40%] Built target __idf_freertos
+[ 82%] Built target __idf_esp_hal_usb
+[ 86%] Built target __idf_esp_hal_gpio
+[ 46%] Built target __idf_esp_hw_support
+[ 90%] Built target __idf_hal
+[ 47%] Built target __idf_esp_hal_touch_sens
+[ 94%] Built target __idf_soc
+[ 47%] Built target __idf_esp_hal_pmu
+[ 96%] Built target __idf_xtensa
+[ 47%] Built target __idf_esp_hal_usb
+[ 97%] Built target __idf_main
+[ 48%] Built target __idf_esp_hal_gpio
+[ 98%] Built target bootloader.elf
+[ 50%] Built target __idf_soc
+[100%] Built target gen_bootloader_binary
+[ 51%] Built target __idf_heap
+[100%] Built target gen_project_binary
+[ 52%] Built target __idf_hal
+Bootloader binary size 0x5240 bytes. 0x2dc0 bytes (36%) free.
+[ 53%] Built target __idf_esp_rom
+[100%] Built target bootloader_check_size
+[100%] Built target app
+[ 53%] Built target __idf_esp_common
+[ 53%] No install step for 'bootloader'
+[ 54%] Completed 'bootloader'
+[ 58%] Built target __idf_esp_system
+[ 61%] Built target __idf_spi_flash
+[ 62%] Built target bootloader
+[ 64%] Built target __idf_bootloader_support
+[ 65%] Built target __idf_esp_hal_ana_conv
+[ 66%] Built target __idf_esp_hal_wdt
+[ 71%] Built target tfpsacrypto
+[ 74%] Built target mbedtls
+[ 76%] Built target mbedx509
+[ 83%] Built target builtin
+[ 83%] Built target p256m
+[ 83%] Built target everest
+[ 83%] Built target __idf_mbedtls
+[ 84%] Built target __idf_esp_driver_dma
+[ 84%] Built target __idf_esp_mm
+[ 84%] Built target __idf_esp_pm
+[ 85%] Built target __idf_esp_hal_uart
+[ 86%] Built target __idf_esp_driver_gpio
+[ 87%] Built target __idf_esp_security
+[ 88%] Built target __idf_esp_timer
+[ 88%] Built target __idf_esp_hal_timg
+[ 89%] Built target __idf_efuse
+[ 89%] Built target __idf_esp_partition
+[ 89%] Built target __idf_app_update
+[ 89%] Built target __idf_esp_bootloader_format
+[ 89%] Built target __idf_esp_app_format
+[ 90%] Built target __idf_esp_hal_security
+[ 91%] Built target __idf_esp_hal_mspi
+[ 91%] Built target __idf_esp_hal_clock
+[ 91%] Built target __idf_esp_hal_gpspi
+[ 92%] Built target __idf_esp_hal_dma
+[ 92%] Built target __idf_esp_stdio
+[ 93%] Built target __idf_xtensa
+[ 93%] Built target __idf_espressif__cJSON
+[ 93%] Built target __idf_tcp_transport
+[ 94%] Built target __idf_esp_hal_i2c
+[ 95%] Built target __idf_esp_adc
+[ 95%] Built target __idf_esp_hal_twai
+[ 96%] Built target __idf_espressif__mqtt
+[ 97%] Built target __idf_driver
+[ 97%] Building C object esp-idf/main/CMakeFiles/__idf_main.dir/sensor.c.obj
+[ 97%] Building C object esp-idf/main/CMakeFiles/__idf_main.dir/control.c.obj
+[ 97%] Building C object esp-idf/main/CMakeFiles/__idf_main.dir/app_mqtt.c.obj
+[ 97%] Building C object esp-idf/main/CMakeFiles/__idf_main.dir/pump.c.obj
+
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/pump.c:1:10: fatal error: driver/gpio.h: No such file or directory
+    1 | #include "driver/gpio.h"
+      |          ^~~~~~~~~~~~~~~
+compilation terminated.
+make[2]: *** [esp-idf/main/CMakeFiles/__idf_main.dir/build.make:132: esp-idf/main/CMakeFiles/__idf_main.dir/pump.c.obj] Error 1
+make[2]: *** Waiting for unfinished jobs....
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/sensor.c: In function 'sensor_init':
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/sensor.c:57:18: error: 'ADC_ATTEN_DB_11' undeclared (first use in this function); did you mean 'ADC_ATTEN_DB_12'?
+   57 |         .atten = ADC_ATTEN_DB_11, // allow up to ~3.3V on S3
+      |                  ^~~~~~~~~~~~~~~
+      |                  ADC_ATTEN_DB_12
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/sensor.c:57:18: note: each undeclared identifier is reported only once for each function it appears in
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/sensor.c: At top level:
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/sensor.c:14:12: warning: 'cmp_int' defined but not used [-Wunused-function]
+   14 | static int cmp_int(const void *a, const void *b) {
+      |            ^~~~~~~
+make[2]: *** [esp-idf/main/CMakeFiles/__idf_main.dir/build.make:118: esp-idf/main/CMakeFiles/__idf_main.dir/sensor.c.obj] Error 1
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/control.c: In function 'millis':
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/control.c:19:22: error: implicit declaration of function 'esp_timer_get_time' [-Wimplicit-function-declaration]
+   19 |     return (int64_t)(esp_timer_get_time() / 1000ULL);
+      |                      ^~~~~~~~~~~~~~~~~~
+make[2]: *** [esp-idf/main/CMakeFiles/__idf_main.dir/build.make:146: esp-idf/main/CMakeFiles/__idf_main.dir/control.c.obj] Error 1
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/app_mqtt.c:15:8: error: unknown type name 'command_cb_t'
+   15 | static command_cb_t s_cmd_cb = NULL;
+      |        ^~~~~~~~~~~~
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/app_mqtt.c:15:32: error: initialization of 'int' from 'void *' makes integer from pointer without a cast [-Wint-conversion]
+   15 | static command_cb_t s_cmd_cb = NULL;
+      |                                ^~~~
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/app_mqtt.c: In function 'mqtt_event_handler':
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/app_mqtt.c:32:26: error: 'MODE_ON' undeclared (first use in this function)
+   32 |                 s_cmd_cb(MODE_ON);
+      |                          ^~~~~~~
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/app_mqtt.c:32:26: note: each undeclared identifier is reported only once for each function it appears in
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/app_mqtt.c:32:17: error: called object 's_cmd_cb' is not a function or function pointer
+   32 |                 s_cmd_cb(MODE_ON);
+      |                 ^~~~~~~~
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/app_mqtt.c:15:21: note: declared here
+   15 | static command_cb_t s_cmd_cb = NULL;
+      |                     ^~~~~~~~
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/app_mqtt.c:34:26: error: 'MODE_OFF' undeclared (first use in this function)
+   34 |                 s_cmd_cb(MODE_OFF);
+      |                          ^~~~~~~~
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/app_mqtt.c:34:17: error: called object 's_cmd_cb' is not a function or function pointer
+   34 |                 s_cmd_cb(MODE_OFF);
+      |                 ^~~~~~~~
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/app_mqtt.c:15:21: note: declared here
+   15 | static command_cb_t s_cmd_cb = NULL;
+      |                     ^~~~~~~~
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/app_mqtt.c:36:26: error: 'MODE_AUTO' undeclared (first use in this function)
+   36 |                 s_cmd_cb(MODE_AUTO);
+      |                          ^~~~~~~~~
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/app_mqtt.c:36:17: error: called object 's_cmd_cb' is not a function or function pointer
+   36 |                 s_cmd_cb(MODE_AUTO);
+      |                 ^~~~~~~~
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/app_mqtt.c:15:21: note: declared here
+   15 | static command_cb_t s_cmd_cb = NULL;
+      |                     ^~~~~~~~
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/app_mqtt.c: At top level:
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/app_mqtt.c:46:23: error: unknown type name 'command_cb_t'
+   46 | void mqtt_client_init(command_cb_t cb)
+      |                       ^~~~~~~~~~~~
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/app_mqtt.c:73:63: error: unknown type name 'control_mode_t'
+   73 | void mqtt_publish_telemetry(float moisture_pct, bool pump_on, control_mode_t mode, int rssi)
+      |                                                               ^~~~~~~~~~~~~~
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/app_mqtt.c:17:13: warning: 'mqtt_event_handler' defined but not used [-Wunused-function]
+   17 | static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data)
+      |             ^~~~~~~~~~~~~~~~~~
+make[2]: *** [esp-idf/main/CMakeFiles/__idf_main.dir/build.make:104: esp-idf/main/CMakeFiles/__idf_main.dir/app_mqtt.c.obj] Error 1
+make[1]: *** [CMakeFiles/Makefile2:4901: esp-idf/main/CMakeFiles/__idf_main.dir/all] Error 2
+make: *** [Makefile:136: all] Error 2
+[0;33mCompilation failed because pump.c (in "main" component) includes driver/gpio.h, provided by esp_driver_gpio component(s).
+However, esp_driver_gpio component(s) is not in the requirements list of "main".
+To fix this, add esp_driver_gpio to PRIV_REQUIRES list of idf_component_register call in /home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/CMakeLists.txt.[0m
+make failed with exit code 2, output of the command is in the /home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/build/log/idf_py_stderr_output_394308 and /home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/build/log/idf_py_stdout_output_394308
+
+Suggested next steps:
+- esp32_analyze (Check for common ESP-IDF issues)
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/control.c
+#include "control.h"
+#include "pump.h"
+#include "sensor.h"
+#include "app_config.h"
+#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "esp_wifi.h"
+#include "esp_timer.h"
+
+static const char *TAG = "control";
+
+static control_mode_t s_mode = MODE_AUTO;
+static int64_t s_last_on_time = -APP_MIN_OFF_TIME_MS;  // relative timers in ms
+static int64_t s_last_off_time = 0;
+static int64_t s_override_since = -1; // ms since boot; -1 when not in override
+
+static int64_t millis(void)
+{
+    return (int64_t)(esp_timer_get_time() / 1000ULL);
+}
+control.c ++
+
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/control.c
+#include "esp_timer.h"
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/CMakeLists.txt
+idf_component_register(
+    SRCS 
+        "main.c"
+        "wifi_manager.c"
+        "app_mqtt.c"
+        "sensor.c"
+        "pump.c"
+        "control.c"
+    INCLUDE_DIRS "."
+    REQUIRES esp_wifi esp_event esp_netif nvs_flash mqtt cJSON esp-tls esp_adc esp_timer
+    PRIV_REQUIRES esp_driver_gpio
+)
+CMakeLists.txt --+++
+
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/CMakeLists.txt
+    REQUIRES esp_wifi esp_event esp_netif nvs_flash mqtt cJSON esp-tls esp_adc driver esp_timer
+    REQUIRES esp_wifi esp_event esp_netif nvs_flash mqtt cJSON esp-tls esp_adc esp_timer
+    PRIV_REQUIRES esp_driver_gpio
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/sensor.c
+adc_oneshot_chan_cfg_t config = {
+    .bitwidth = ADC_BITWIDTH_DEFAULT,
+    .atten = ADC_ATTEN_DB_12, // 11 or 12 dB depending on IDF; use 12 dB for full-scale ~3.3V
+};
+sensor.c --++
+
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/sensor.c
+        .atten = ADC_ATTEN_DB_11, // allow up to ~3.3V on S3
+        .atten = ADC_ATTEN_DB_12, // 11 or 12 dB depending on IDF; use 12 dB for full-scale ~3.3V
+🔨esp32_build
+
+esp32_build(operation="build", project_path="/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation", target="esp32s3")
+✗ Build failed: Build successful, no errors
+Executing action: all (aliases: build)
+Running make in directory /home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/build
+Executing "make -j 14 all"...
+-- Component directory /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/idf_test does not contain a CMakeLists.txt file. No component will be added
+-- Component directory /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/mqtt does not contain a CMakeLists.txt file. No component will be added
+-- Minimal build - ON
+-- git rev-parse returned 'fatal: not a git repository (or any of the parent directories): .git'
+-- Could not use 'git describe' to determine PROJECT_VER.
+-- Building ESP-IDF components for target esp32s3
+NOTICE: Processing 3 dependencies:
+NOTICE: [1/3] espressif/cJSON (1.7.19~1)
+NOTICE: [2/3] espressif/mqtt (1.0.0)
+NOTICE: [3/3] idf (6.1.0)
+-- ESP-TEE is currently supported only on the esp32c6;esp32h2;esp32c5;esp32c61 SoCs
+-- KCONFIG_REPORT_VERBOSITY not set, using default
+-- Project sdkconfig file /home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/sdkconfig
+Loading defaults file /home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/sdkconfig.defaults...
+Loading defaults file /home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/sdkconfig.defaults.esp32s3...
+-- Compiler supported targets: xtensa-esp-elf
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- App "blink" version: 1
+-- Setting up mbedtls configuration
+-- Linkage type is PUBLIC
+-- Adding linker script /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_hal_wdt/esp32s3/rom.wdt.ld
+-- Adding linker script /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_system/ld/esp32s3/memory.ld.in
+--   -> Preprocessing .in script: /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_system/ld/esp32s3/memory.ld.in
+-- Adding linker script /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_system/ld/esp32s3/sections.ld.in
+--   -> Preprocessing .in script: /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_system/ld/esp32s3/sections.ld.in
+--   -> Applying ldgen processing: /home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/build/esp-idf/esp_system/ld/sections.ld.in
+-- Adding linker script /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_rom/esp32s3/ld/esp32s3.rom.ld
+-- Adding linker script /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_rom/esp32s3/ld/esp32s3.rom.api.ld
+-- Adding linker script /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_rom/esp32s3/ld/esp32s3.rom.bt_funcs.ld
+-- Adding linker script /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_rom/esp32s3/ld/esp32s3.rom.libgcc.ld
+-- Adding linker script /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_rom/esp32s3/ld/esp32s3.rom.version.ld
+-- Adding linker script /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_rom/esp32s3/ld/esp32s3.rom.ble_master.ld
+-- Adding linker script /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_rom/esp32s3/ld/esp32s3.rom.ble_50.ld
+-- Adding linker script /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_rom/esp32s3/ld/esp32s3.rom.ble_smp.ld
+-- Adding linker script /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_rom/esp32s3/ld/esp32s3.rom.ble_dtm.ld
+-- Adding linker script /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_rom/esp32s3/ld/esp32s3.rom.ble_test.ld
+-- Adding linker script /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_rom/esp32s3/ld/esp32s3.rom.ble_scan.ld
+-- Adding linker script /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_rom/esp32s3/ld/esp32s3.rom.libc.ld
+-- Adding linker script /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/soc/esp32s3/ld/esp32s3.peripherals.ld
+-- Components: app_update bootloader bootloader_support cxx efuse esp-tls esp_adc esp_app_format esp_blockdev esp_bootloader_format esp_coex esp_common esp_driver_dma esp_driver_gpio esp_driver_uart esp_driver_usb_serial_jtag esp_event esp_hal_ana_conv esp_hal_clock esp_hal_dma esp_hal_gpio esp_hal_gpspi esp_hal_mspi esp_hal_pmu esp_hal_rtc_timer esp_hal_security esp_hal_timg esp_hal_touch_sens esp_hal_uart esp_hal_usb esp_hal_wdt esp_hw_support esp_libc esp_mm esp_netif esp_netif_stack esp_partition esp_phy esp_pm esp_psram esp_ringbuf esp_rom esp_security esp_stdio esp_system esp_timer esp_usb_cdc_rom_console esp_wifi espressif__cJSON espressif__mqtt esptool_py freertos hal heap http_parser log lwip main mbedtls nvs_flash nvs_sec_provider partition_table pthread soc spi_flash tcp_transport vfs wpa_supplicant xtensa
+-- Component paths: /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/app_update /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/bootloader /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/bootloader_support /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/cxx /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/efuse /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp-tls /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_adc /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_app_format /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_blockdev /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_bootloader_format /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_coex /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_common /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_driver_dma /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_driver_gpio /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_driver_uart /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_driver_usb_serial_jtag /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_event /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_hal_ana_conv /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_hal_clock /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_hal_dma /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_hal_gpio /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_hal_gpspi /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_hal_mspi /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_hal_pmu /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_hal_rtc_timer /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_hal_security /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_hal_timg /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_hal_touch_sens /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_hal_uart /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_hal_usb /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_hal_wdt /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_hw_support /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_libc /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_mm /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_netif /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_netif_stack /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_partition /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_phy /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_pm /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_psram /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_ringbuf /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_rom /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_security /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_stdio /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_system /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_timer /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_usb_cdc_rom_console /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esp_wifi /home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/managed_components/espressif__cJSON /home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/managed_components/espressif__mqtt /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/esptool_py /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/freertos /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/hal /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/heap /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/http_parser /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/log /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/lwip /home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/mbedtls /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/nvs_flash /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/nvs_sec_provider /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/partition_table /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/pthread /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/soc /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/spi_flash /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/tcp_transport /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/vfs /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/wpa_supplicant /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/xtensa
+-- Configuring done (6.1s)
+-- Generating done (0.4s)
+-- Build files have been written to: /home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/build
+[  0%] Built target partition_table_bin
+[  0%] Built target sections_ld_in_preprocess
+[  0%] Built target memory_ld_in_preprocess
+[  0%] Built target _project_elf_src
+[  0%] Built target custom_bundle
+[  1%] Performing build step for 'bootloader'
+[  1%] Built target __idf_esp-tls
+[  1%] Built target __idf_http_parser
+[  2%] Built target __idf_esp_wifi
+[  2%] Built target __idf_esp_coex
+-- Component directory /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/idf_test does not contain a CMakeLists.txt file. No component will be added
+-- Component directory /home/ritik/Craftif/CRAFTIF/ESP/esp-idf/components/mqtt does not contain a CMakeLists.txt file. No component will be added
+[ 12%] Built target __idf_wpa_supplicant
+[ 14%] Built target __idf_esp_netif
+[ 25%] Built target __idf_lwip
+[ 26%] Built target __idf_vfs
+[ 26%] Built target __idf_esp_driver_usb_serial_jtag
+[ 27%] Built target __idf_esp_driver_uart
+[ 27%] Built target __idf_esp_psram
+[ 28%] Built target __idf_esp_ringbuf
+[ 29%] Built target __idf_esp_phy
+[ 31%] Built target __idf_nvs_flash
+[ 31%] Built target __idf_nvs_sec_provider
+[ 32%] Built target __idf_esp_event
+[ 34%] Built target __idf_log
+[ 34%] Built target __idf_cxx
+[ 35%] Built target __idf_pthread
+[ 38%] Built target __idf_esp_libc
+[ 40%] Built target __idf_freertos
+[ 46%] Built target __idf_esp_hw_support
+-- Minimal build - OFF
+[ 47%] Built target __idf_esp_hal_touch_sens
+[ 47%] Built target __idf_esp_hal_pmu
+[ 48%] Built target __idf_esp_hal_usb
+[ 50%] Built target __idf_esp_hal_gpio
+[ 51%] Built target __idf_soc
+[ 52%] Built target __idf_heap
+[ 53%] Built target __idf_hal
+[ 54%] Built target __idf_esp_rom
+[ 55%] Built target __idf_esp_common
+[ 60%] Built target __idf_esp_system
+-- Building ESP-IDF components for target esp32s3
+[ 62%] Built target __idf_spi_flash
+[ 64%] Built target __idf_bootloader_support
+[ 65%] Built target __idf_esp_hal_ana_conv
+[ 66%] Built target __idf_esp_hal_wdt
+[ 71%] Built target tfpsacrypto
+[ 74%] Built target mbedtls
+[ 76%] Built target mbedx509
+[ 84%] Built target builtin
+[ 84%] Built target p256m
+[ 84%] Built target everest
+[ 85%] Built target __idf_mbedtls
+[ 85%] Built target __idf_esp_driver_dma
+[ 85%] Built target __idf_esp_mm
+-- ESP-TEE is currently supported only on the esp32c6;esp32h2;esp32c5;esp32c61 SoCs
+[ 85%] Built target __idf_esp_pm
+[ 85%] Built target __idf_esp_hal_uart
+[ 86%] Built target __idf_esp_driver_gpio
+[ 87%] Built target __idf_esp_security
+[ 88%] Built target __idf_esp_timer
+[ 88%] Built target __idf_esp_hal_timg
+[ 90%] Built target __idf_efuse
+[ 90%] Built target __idf_esp_partition
+[ 90%] Built target __idf_app_update
+[ 90%] Built target __idf_esp_bootloader_format
+[ 90%] Built target __idf_esp_app_format
+[ 91%] Built target __idf_esp_hal_security
+[ 92%] Built target __idf_esp_hal_mspi
+[ 92%] Built target __idf_esp_hal_clock
+[ 93%] Built target __idf_esp_hal_gpspi
+[ 93%] Built target __idf_esp_hal_dma
+-- KCONFIG_REPORT_VERBOSITY not set, using default
+Truncated: too many tokens
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/app_mqtt.c
+#include <stdio.h>
+#include <string.h>
+#include <strings.h>
+#include <stdbool.h>
+#include "esp_log.h"
+#include "mqtt_client.h" // from espressif/mqtt component
+#include "wifi_manager.h"
+#include "app_config.h"
+#include "esp_event.h"
+#include "cJSON.h"
+#include "esp_tls.h"
+#include "esp_crt_bundle.h"
+#include "esp_wifi.h"
+#include "app_mqtt.h"
+app_mqtt.c +++++++
+
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/app_mqtt.c
+#include <strings.h>
+#include <stdbool.h>
+#include "esp_crt_bundle.h"
+#include "app_mqtt.h"
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/app_mqtt.c
+static esp_mqtt_client_handle_t client = NULL;
+static command_cb_t s_cmd_cb = NULL;
+
+🔨cat
+
+📎 app_mqtt.h
+
+🔨esp32_build
+
+esp32_build(operation="build", project_path="/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation", target="esp32s3")
+✗ Build failed: Build successful, no errors
+Executing action: all (aliases: build)
+Running make in directory /home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/build
+Executing "make -j 14 all"...
+[  0%] Built target partition_table_bin
+[  0%] Built target custom_bundle
+[  0%] Built target sections_ld_in_preprocess
+[  0%] Built target _project_elf_src
+[  0%] Built target memory_ld_in_preprocess
+[  1%] Performing build step for 'bootloader'
+[  1%] Built target __idf_esp-tls
+[  1%] Built target __idf_http_parser
+[  1%] Built target _project_elf_src
+[  2%] Built target bootloader_ld_in_preprocess
+[  8%] Built target __idf_log
+[  2%] Built target __idf_esp_wifi
+[ 16%] Built target __idf_esp_rom
+[  2%] Built target __idf_esp_coex
+[ 17%] Built target __idf_esp_common
+[ 24%] Built target __idf_esp_hw_support
+[ 12%] Built target __idf_wpa_supplicant
+[ 25%] Built target __idf_esp_system
+[ 14%] Built target __idf_esp_netif
+[ 31%] Built target __idf_efuse
+[ 46%] Built target __idf_bootloader_support
+[ 25%] Built target __idf_lwip
+[ 48%] Built target __idf_esp_security
+[ 26%] Built target __idf_vfs
+[ 50%] Built target __idf_esp_hal_security
+[ 26%] Built target __idf_esp_driver_usb_serial_jtag
+[ 55%] Built target __idf_esp_hal_ana_conv
+[ 27%] Built target __idf_esp_driver_uart
+[ 58%] Built target __idf_esp_hal_uart
+[ 27%] Built target __idf_esp_psram
+[ 61%] Built target __idf_esp_hal_wdt
+[ 28%] Built target __idf_esp_ringbuf
+[ 63%] Built target __idf_esp_hal_timg
+[ 29%] Built target __idf_esp_phy
+[ 64%] Built target __idf_esp_bootloader_format
+[ 31%] Built target __idf_nvs_flash
+[ 65%] Built target __idf_spi_flash
+[ 31%] Built target __idf_nvs_sec_provider
+[ 66%] Built target __idf_esp_hal_mspi
+[ 32%] Built target __idf_esp_event
+[ 67%] Built target __idf_esp_hal_clock
+[ 34%] Built target __idf_log
+[ 72%] Built target __idf_esp_hal_gpspi
+[ 34%] Built target __idf_cxx
+[ 75%] Built target __idf_esp_hal_dma
+[ 77%] Built target __idf_micro-ecc
+[ 35%] Built target __idf_pthread
+[ 79%] Built target __idf_esp_hal_pmu
+[ 38%] Built target __idf_esp_libc
+[ 82%] Built target __idf_esp_hal_usb
+[ 40%] Built target __idf_freertos
+[ 86%] Built target __idf_esp_hal_gpio
+[ 46%] Built target __idf_esp_hw_support
+[ 90%] Built target __idf_hal
+[ 47%] Built target __idf_esp_hal_touch_sens
+[ 94%] Built target __idf_soc
+[ 47%] Built target __idf_esp_hal_pmu
+[ 96%] Built target __idf_xtensa
+[ 48%] Built target __idf_esp_hal_usb
+[ 97%] Built target __idf_main
+[ 50%] Built target __idf_esp_hal_gpio
+[ 98%] Built target bootloader.elf
+[ 51%] Built target __idf_soc
+[100%] Built target gen_bootloader_binary
+[ 52%] Built target __idf_heap
+[100%] Built target gen_project_binary
+[ 53%] Built target __idf_hal
+Bootloader binary size 0x5240 bytes. 0x2dc0 bytes (36%) free.
+[ 54%] Built target __idf_esp_rom
+[100%] Built target bootloader_check_size
+[100%] Built target app
+[ 55%] Built target __idf_esp_common
+[ 55%] No install step for 'bootloader'
+[ 60%] Built target __idf_esp_system
+[ 60%] Completed 'bootloader'
+[ 62%] Built target __idf_spi_flash
+[ 62%] Built target bootloader
+[ 64%] Built target __idf_bootloader_support
+[ 65%] Built target __idf_esp_hal_ana_conv
+[ 66%] Built target __idf_esp_hal_wdt
+[ 71%] Built target tfpsacrypto
+[ 74%] Built target mbedtls
+[ 76%] Built target mbedx509
+[ 84%] Built target builtin
+[ 84%] Built target p256m
+[ 84%] Built target everest
+[ 85%] Built target __idf_mbedtls
+[ 85%] Built target __idf_esp_driver_dma
+[ 85%] Built target __idf_esp_mm
+[ 85%] Built target __idf_esp_pm
+[ 85%] Built target __idf_esp_hal_uart
+[ 86%] Built target __idf_esp_driver_gpio
+[ 87%] Built target __idf_esp_security
+[ 88%] Built target __idf_esp_timer
+[ 88%] Built target __idf_esp_hal_timg
+[ 90%] Built target __idf_efuse
+[ 90%] Built target __idf_esp_partition
+[ 90%] Built target __idf_app_update
+[ 90%] Built target __idf_esp_bootloader_format
+[ 90%] Built target __idf_esp_app_format
+[ 91%] Built target __idf_esp_hal_security
+[ 92%] Built target __idf_esp_hal_mspi
+[ 92%] Built target __idf_esp_hal_clock
+[ 93%] Built target __idf_esp_hal_gpspi
+[ 93%] Built target __idf_esp_hal_dma
+[ 93%] Built target __idf_esp_stdio
+[ 94%] Built target __idf_xtensa
+[ 94%] Built target __idf_espressif__cJSON
+[ 96%] Built target __idf_esp_adc
+[ 97%] Built target __idf_tcp_transport
+[ 98%] Built target __idf_espressif__mqtt
+[ 98%] Building C object esp-idf/main/CMakeFiles/__idf_main.dir/app_mqtt.c.obj
+
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/app_mqtt.c: In function 'mqtt_client_init':
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/app_mqtt.c:61:30: error: 'struct verification_t' has no member named 'certificate_bundle_attach'; did you mean 'crt_bundle_attach'?
+   61 |         .broker.verification.certificate_bundle_attach = esp_crt_bundle_attach,
+      |                              ^~~~~~~~~~~~~~~~~~~~~~~~~
+      |                              crt_bundle_attach
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/app_mqtt.c:61:9: error: the address of 'esp_crt_bundle_attach' will always evaluate as 'true' [-Werror=address]
+   61 |         .broker.verification.certificate_bundle_attach = esp_crt_bundle_attach,
+      |         ^
+cc1: all warnings being treated as errors
+make[2]: *** [esp-idf/main/CMakeFiles/__idf_main.dir/build.make:104: esp-idf/main/CMakeFiles/__idf_main.dir/app_mqtt.c.obj] Error 1
+make[1]: *** [CMakeFiles/Makefile2:4758: esp-idf/main/CMakeFiles/__idf_main.dir/all] Error 2
+make: *** [Makefile:136: all] Error 2
+[0;33mHINT: The warning(s) '-Werror=address' may appear after compiler update above GCC-12
+To suppress these warnings use 'idf.py menuconfig' to enable configure option 'Compiler options' -> 'Disable new warnings introduced in GCC 12'
+Please note that this is not a permanent solution, and this option will be removed in a future update of the ESP-IDF.
+It is strongly recommended to fix all warnings, as they may indicate potential issues![0m
+make failed with exit code 2, output of the command is in the /home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/build/log/idf_py_stderr_output_396923 and /home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/build/log/idf_py_stdout_output_396923
+
+Suggested next steps:
+- esp32_analyze (Check for common ESP-IDF issues)
+/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation/main/app_mqtt.c
+.broker.verification.crt_bundle_attach = esp_crt_bundle_attach,
+app_mqtt.c --++
+
+🔨esp32_build
+
+esp32_build(operation="build", project_path="/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation", target="esp32s3")
+✓ Built successfully in 11.1s
+Suggested next steps:
+- esp32_device (Flash the built firmware to device)
+- esp32_analyze (Analyze code for potential issues)
+Plan executed. Here's what I built and how it works. Please confirm, and I can flash it to your board. What I created
+New ESP-IDF project: Projects/smart_irrigation (target: esp32s3, board ESP32-S3-DevKitM-1 N16R8)
+Core modules (non-blocking FreeRTOS tasks):
+Wi-Fi manager with auto-reconnect (wifi_manager.c/.h)
+MQTT over TLS (HiveMQ Cloud) with auto-reconnect, telemetry publish, command subscribe (app_mqtt.c/.h)
+ADC oneshot soil moisture sensor driver with median-of-5 and 0–100% mapping (sensor.c/.h)
+Pump control with configurable polarity (pump.c/.h)
+Control logic with hysteresis, min ON/OFF timers, AUTO/ON/OFF + 30 min override timeout (control.c/.h)
+app_main that ties it all together (main.c)
+app_config.h for all pins, thresholds, Wi-Fi/MQTT URIs and intervals
+Your configured settings
+Wi-Fi: SSID M32, password Abhi1234
+MQTT: mqtts://b745335a48254f229d60aad98846122d.s1.eu.hivemq.cloud:8883, username esp32_mqtt, password Abhi@123
+Topics:
+Telemetry publish: home/garden/irrigation1/tele (JSON payload: moisture_pct, pump, mode, rssi)
+Command subscribe: home/garden/irrigation1/cmd (payload: "ON", "OFF", "AUTO")
+GPIOs (can change in main/app_config.h):
+Sensor ADC GPIO: 4 (ADC1 channel 3 on S3)
+Pump GPIO: 13, active-HIGH
+Status LED: disabled (-1)
+Control defaults:
+Threshold 35% with 5% hysteresis (ON <35, OFF >40)
+Min ON 20 s, Min OFF 30 s
+Sensor every 2 s, Telemetry every 30 s
+Override auto-expires in 30 minutes if no new command
+Reliability and non-blocking behavior
+Wi-Fi and MQTT use ESP-IDF event loops with auto reconnect
+Local AUTO logic keeps running if Wi-Fi/MQTT drop; publishing resumes on reconnect
+All loops are cooperative with FreeRTOS delays (no busy-waits)
+MQTT TLS uses IDF certificate bundle (enabled via sdkconfig.defaults)
+Files of interest
+main/app_config.h: change pins and thresholds any time
+main/main.c: app glue and task spawns
+main/app_mqtt.c|h: MQTT connect, subscribe to cmd, publish telemetry
+main/control.c|h: control logic and override handling
+main/sensor.c|h: moisture percentage readout
+main/pump.c|h: pump GPIO control
+main/wifi_manager.c|h: Wi-Fi bring-up and reconnect
+main/CMakeLists.txt and sdkconfig.defaults adjusted for needed components and TLS bundle
+Build status
+Project builds successfully for ESP32-S3.
+Next steps
+Do you want me to:
+Flash the firmware to your device and open the serial monitor?
+Or share the broker topic you can use to test commands? Example:
+Publish to home/garden/irrigation1/cmd with "ON" / "OFF" / "AUTO"
+Subscribe to home/garden/irrigation1/tele to see telemetry JSON
+Optional confirmations
+If you prefer different GPIOs or pump polarity, tell me and I'll update app_config.h.
+For ADC calibration, we can quickly record dry/wet raw values and set APP_ADC_RAW_DRY/WET for accurate % readings.
+Would you like me to proceed with flashing and monitoring?
+yes
+🔨esp32_device
+
+esp32_device(operation="detect")
+✓ Detected 1 ESP32 device(s)
+Suggested next steps:
+- esp32_device (Verify device matches board definition)
+🔨esp32_device
+
+esp32_device(operation="verify", board_id="esp32-s3-DevKitM-1-N16R8")
+⚠ Device verified with warnings for board esp32-s3-DevKitM-1-N16R8 (from provided)
+Chip mismatch: expected esp32s3, detected esp32s3(qfn56) (ESP32-S3 (QFN56))
+🔨esp32_device
+
+esp32_device(operation="flash", project_path="/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation")
+✓ Flashed to /dev/ttyUSB0 in 69.1s
+Suggested next steps:
+- esp32_device (Monitor device output)
+🔨esp32_device
+
+esp32_device(operation="monitor", project_path="/home/ritik/Craftif/CRAFTIF/ESP/Projects/smart_irrigation", duration=60)
+✓ Captured 60s of output from /dev/ttyUSB0 (34 lines)
+STDOUT
+```
+: 10
+I (485) wifi:Init dynamic rx buffer num: 32
+I (485) wifi_init: rx ba win: 6
+I (495) wifi_init: accept mbox: 6
+I (495) wifi_init: tcpip mbox: 32
+I (495) wifi_init: udp mbox: 6
+I (505) wifi_init: tcp mbox: 6
+I (505) wifi_init: tcp tx win: 5760
+I (505) wifi_init: tcp rx win: 5760
+I (505) wifi_init: tcp mss: 1440
+I (515) wifi_init: WiFi IRAM OP enabled
+I (515) wifi_init: WiFi RX IRAM OP enabled
+I (525) phy_init: phy_version 711,97bcf0a2,Aug 25 2025,19:04:10
+I (565) wifi:mode : sta (90:70:69:16:9a:78)
+I (565) wifi:enable tsf
+I (565) wifi_mgr: WIFI_EVENT_STA_START -> connecting...
+I (565) sensor: ADC calibration enabled
+I (575) wifi:new:<6,0>, old:<1,0>, ap:<255,255>, sta:<6,0>, prof:1, snd_ch_cfg:0x0
+I (575) wifi:state: init -> auth (0xb0)
+I (605) wifi:state: auth -> assoc (0x0)
+I (615) wifi:state: assoc -> run (0x10)
+I (635) wifi:connected with M32, aid = 1, channel 6, BW20, bssid = 5e:52:ac:f9:da:13
+I (635) wifi:security: WPA2-PSK, phy: bgn, rssi: -57
+I (635) wifi:pm start, type: 1
+I (635) wifi:dp: 1, bi: 102400, li: 3, scale listen interval from 307200 us to 307200 us
+I (645) wifi:set rx beacon pti, rx_bcn_pti: 0, bcn_timeout: 25000, mt_pti: 0, mt_time: 10000
+I (655) wifi:dp: 2, bi: 102400, li: 4, scale listen interval from 307200 us to 409600 us
+I (665) wifi:AP's beacon interval = 102400 us, DTIM period = 2
+I (1715) esp_netif_handlers: sta ip: 10.77.100.145, mask: 255.255.255.0, gw: 10.77.100.187
+I (1715) wifi_mgr: Got IP
+I (1715) main_task: Returned from app_main()
+I (2595) esp-x509-crt-bundle: Certificate validated
+I (4345) mqtt: Connected to MQTT
+I (4755) wifi:<ba-add>idx:0 (ifx:0, 5e:52:ac:f9:da:13), tid:0, ssn:17, winSize:64
+```
+Flashed and running. What I see on the serial monitor
+Wi‑Fi connected to SSID M32 and got IP 10.x.x.x
+TLS certificate validated using the IDF bundle
+MQTT connected successfully to your HiveMQ Cloud endpoint
+Control, sensor, and telemetry tasks are running
+How to test from your MQTT client
+Subscribe to telemetry:
+Topic: home/garden/irrigation1/tele
+Expect JSON like: {"moisture_pct":42.1,"pump":"OFF","mode":"AUTO","rssi":-57}
+Send command override:
+Topic: home/garden/irrigation1/cmd
+Payload: ON, OFF, or AUTO (plain text)
+ON/OFF overrides auto-return to AUTO after 30 minutes unless refreshed
+Hardware wiring reminder
+Sensor analog out -> GPIO4 (ADC1 CH3 on S3)
+Pump relay/MOSFET input -> GPIO13 (active-HIGH)
+If your hardware uses active-LOW, change APP_PUMP_ACTIVE_HIGH to 0 in main/app_config.h and rebuild/flash.
+Optional calibration
+For better % mapping, we can quickly calibrate sensor:
+Note raw reading in dry air (RAW_DRY) and in water/saturated soil (RAW_WET)
+Update APP_ADC_RAW_DRY / APP_ADC_RAW_WET in app_config.h
+Rebuild and flash
+Would you like me to:
+Tail the serial monitor longer while you publish commands?
+Adjust pins/polarity or thresholds?
+Set up a convenience command for building/flashing/monitoring?
+If you want, click this to create a one-click command line tool:

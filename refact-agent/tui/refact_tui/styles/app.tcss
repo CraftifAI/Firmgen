@@ -1,0 +1,200 @@
+/* Refact TUI - Main Stylesheet */
+
+Screen {
+    layout: vertical;
+}
+
+/* Header */
+#app-header {
+    dock: top;
+    height: 1;
+    background: $primary-background;
+    color: $text;
+    text-style: bold;
+    padding: 0 1;
+}
+
+/* Main content area */
+#main-content {
+    layout: horizontal;
+    height: 1fr;
+}
+
+/* Sidebar */
+Sidebar {
+    width: 35;
+    border-right: solid $primary-lighten-2;
+    background: $surface;
+}
+
+#sidebar-scroll {
+    height: 1fr;
+}
+
+Sidebar Collapsible {
+    padding: 0;
+}
+
+#file-tree {
+    height: auto;
+    max-height: 30;
+}
+
+/* Chat area */
+#chat-area {
+    width: 1fr;
+    layout: vertical;
+}
+
+/* Chat messages scroll */
+#chat-messages {
+    height: 1fr;
+    padding: 0 1;
+    scrollbar-size: 1 1;
+}
+
+/* Message styling */
+.msg-role {
+    height: auto;
+    margin: 0;
+    padding: 0;
+}
+
+.msg-content {
+    height: auto;
+    margin: 0 0 0 2;
+    padding: 0;
+}
+
+.user-msg {
+    color: $text;
+}
+
+.assistant-msg {
+    height: auto;
+    margin: 0 0 0 2;
+}
+
+.tool-msg {
+    color: $text-muted;
+}
+
+.system-msg {
+    color: $text-muted;
+}
+
+.context-file {
+    height: auto;
+    margin: 0 0 0 2;
+    color: $text-muted;
+}
+
+.tool-call {
+    height: auto;
+    margin: 0 0 0 2;
+    padding: 0;
+}
+
+.diff-block {
+    height: auto;
+    margin: 0 0 0 2;
+}
+
+.streaming-content {
+    height: auto;
+    margin: 0 0 0 2;
+    color: $text;
+}
+
+/* Input area */
+ChatInput {
+    height: auto;
+    max-height: 6;
+    border-top: solid $primary-lighten-2;
+    padding: 0;
+}
+
+.input-row {
+    height: auto;
+    max-height: 6;
+    padding: 0 1;
+}
+
+.input-prompt {
+    width: 3;
+    height: 1;
+    padding: 0;
+}
+
+#chat-textarea {
+    height: auto;
+    min-height: 1;
+    max-height: 4;
+    border: none;
+    padding: 0;
+}
+
+.send-button {
+    width: 8;
+    height: 1;
+    min-width: 8;
+    margin: 0 0 0 1;
+    background: $primary;
+    color: $text;
+    border: none;
+}
+
+/* Status bar */
+StatusBar {
+    dock: bottom;
+    height: 1;
+    background: $primary-background;
+    color: $text;
+    padding: 0 1;
+}
+
+/* Tool status panel */
+ToolStatusPanel {
+    height: auto;
+    max-height: 20;
+    padding: 0 1;
+}
+
+#tool-scroll {
+    height: auto;
+    max-height: 18;
+}
+
+/* Workflow panel */
+WorkflowPanel {
+    height: auto;
+    max-height: 15;
+    padding: 0 1;
+}
+
+/* Help overlay */
+#help-overlay {
+    align: center middle;
+    background: $surface 90%;
+}
+
+#help-content {
+    width: 60;
+    height: auto;
+    max-height: 30;
+    background: $surface;
+    border: solid $primary;
+    padding: 1 2;
+}
+
+/* Settings screen */
+.settings-container {
+    padding: 1 2;
+}
+
+.settings-section {
+    height: auto;
+    margin: 1 0;
+    padding: 1;
+    border: solid $primary-lighten-2;
+}

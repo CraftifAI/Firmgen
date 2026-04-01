@@ -1,0 +1,75 @@
+<div class="pane">
+  <h2>Chat with Refact Agent</h2>
+  
+  <!-- Connection Status -->
+  <div class="card mb-3">
+    <div class="card-body">
+      <div class="d-flex justify-content-between align-items-center">
+        <div>
+          <h6 class="mb-1">Agent Connection</h6>
+          <small class="text-muted">Connects to refact agent on port 8001</small>
+        </div>
+        <div>
+          <span id="chat-connection-status" class="badge bg-secondary">Checking...</span>
+          <button class="btn btn-sm btn-outline-primary ms-2" id="chat-check-connection">Check Connection</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Chat Interface -->
+  <div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <h5 class="mb-0">Chat</h5>
+      <div>
+        <select class="form-select form-select-sm d-inline-block" id="chat-model" style="width: auto;">
+          <option value="">Auto-select model</option>
+        </select>
+        <button class="btn btn-sm btn-outline-secondary ms-2" id="chat-clear">Clear Chat</button>
+      </div>
+    </div>
+    <div class="card-body">
+      <!-- Chat Messages -->
+      <div id="chat-messages" style="height: 500px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 4px; padding: 15px; margin-bottom: 15px; background-color: #f8f9fa;">
+        <div class="text-center text-muted">
+          <p>Start a conversation with the Refact Agent</p>
+          <p><small>The agent has access to C2000 tools and can help with your embedded development tasks.</small></p>
+        </div>
+      </div>
+
+      <!-- Input Area -->
+      <div class="input-group">
+        <input type="text" class="form-control" id="chat-input" placeholder="Type your message here... (e.g., 'Create a SPI loopback project for F28P65x')" />
+        <button class="btn btn-primary" id="chat-send">Send</button>
+      </div>
+      <div class="form-check mt-2">
+        <input class="form-check-input" type="checkbox" id="chat-stream" checked>
+        <label class="form-check-label" for="chat-stream">
+          Stream response
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <!-- Available Tools -->
+  <div class="card mt-3">
+    <div class="card-header">
+      <h5 class="mb-0">Available Tools</h5>
+    </div>
+    <div class="card-body">
+      <div id="chat-tools-list" class="text-muted">
+        <p>Loading available tools...</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+
+
+
+
+
+
+
+

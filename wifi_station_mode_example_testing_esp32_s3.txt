@@ -1,0 +1,4 @@
+I want to test the Wi-Fi station mode. Here are my Wi-Fi SSID and password:
+SSID: "Hustle@Craftifi"
+PASSWORD="Hustle@CFI"
+create fresh project. refer official ESP‑IDF example.

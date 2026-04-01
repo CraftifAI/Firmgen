@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  refact-agent:
+    build: .
+    container_name: refact-esp32-agent
+    volumes:
+      - .:/workspace  # Your code changes appear immediately
+      - cargo-cache:/root/.cargo/registry  # Cache Rust dependencies
+      - cargo-git:/root/.cargo/git  # Cache Rust git deps
+      - npm-cache:/root/.npm  # Cache npm packages
+    ports:
+      - "8001:8001"   # HTTP API
+      - "8002:8002"   # LSP
+      - "8008:8008"   # Web UI
+    environment:
+      - RUST_LOG=info
+      - REFACT_WORKSPACE=/workspace
+    stdin_open: true
+    tty: true
+
+volumes:
+  cargo-cache:
+  cargo-git:
+  npm-cache:
+

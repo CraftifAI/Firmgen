@@ -1,0 +1,87 @@
+appId: com.craftifai.esp32agent
+productName: CraftifAI ESP32 Agent
+copyright: "Copyright © 2025 CraftifAI"
+
+# Files included from craftifai-desktop/
+files:
+  - main.js
+  - preload.js
+  - renderer/**
+  - assets/**
+  - "!node_modules/**"
+
+# Extra resources copied into resources/ inside the AppImage.
+# Accessed at runtime via process.resourcesPath
+extraResources:
+  # Rust agent binary — build script places the platform-appropriate binary here
+  - from: "../bin/"
+    to: "bin"
+    filter:
+      - "refact-lsp*"
+
+  # Built GUI static files (produced by vite.app.config.ts)
+  - from: "../refact-agent/gui/dist/app"
+    to: "gui"
+    filter: ["**/*"]
+
+  # Python API source + data files only (NO PyInstaller binary).
+  # The app auto-creates a venv in ~/.config/craftifai/venv/ on first launch.
+  - from: "../api-bundle"
+    to: "api"
+    filter:
+      - "**/*"
+      - "!refact-api"       # exclude the 1.4 GB PyInstaller binary
+      - "!dist/**"
+      - "!build/**"
+      - "!.venv/**"
+      - "!__pycache__/**"
+      - "!*.spec"
+
+directories:
+  output: "dist-packages"
+  buildResources: "assets"
+
+linux:
+  target:
+    - target: AppImage
+      arch: [x64]
+    - target: deb
+      arch: [x64]
+  icon: "assets/icon.png"
+  category: Development
+  description: "AI-powered ESP32 firmware development agent"
+  maintainer: "CraftifAI"
+
+appImage:
+  license: "../LICENSE"
+  artifactName: "CraftifAI-ESP32-Agent-${version}-${arch}.AppImage"
+
+deb:
+  depends:
+    - python3
+    - python3-pip
+    - curl
+  artifactName: "craftifai-esp32-agent_${version}_${arch}.deb"
+  afterInstall: "scripts/deb-postinstall.sh"
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+  icon: "assets/icon.ico"
+  artifactName: "CraftifAI-ESP32-Agent-${version}-${arch}.${ext}"
+  forceCodeSigning: false
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: "CraftifAI ESP32 Agent"
+  license: "../LICENSE"
+
+portable:
+  artifactName: "CraftifAI-ESP32-Agent-${version}-portable.exe"

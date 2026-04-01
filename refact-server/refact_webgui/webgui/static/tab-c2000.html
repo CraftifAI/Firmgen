@@ -1,0 +1,166 @@
+<div class="pane">
+  <h2>C2000 Tools</h2>
+  
+  <!-- Configuration Section -->
+  <div class="card mt-4 mb-4">
+    <div class="card-header">
+      <h5 class="mb-0">Configuration</h5>
+    </div>
+    <div class="card-body">
+      <div class="row mb-3">
+        <div class="col-md-6">
+          <label class="form-label">CCS Path</label>
+          <input type="text" class="form-control" id="c2000-ccs-path" placeholder="/path/to/ccs">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">C2000Ware Path</label>
+          <input type="text" class="form-control" id="c2000-c2000ware-path" placeholder="/path/to/C2000Ware">
+        </div>
+      </div>
+      <div class="row mb-3">
+        <div class="col-md-6">
+          <label class="form-label">Workspace Path</label>
+          <input type="text" class="form-control" id="c2000-workspace-path" placeholder="/path/to/workspace">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Target Device</label>
+          <select class="form-select" id="c2000-target-device">
+            <option value="F28P65x">F28P65x</option>
+            <option value="F2837xD">F2837xD</option>
+            <option value="F2837xS">F2837xS</option>
+            <option value="F28004x">F28004x</option>
+          </select>
+        </div>
+      </div>
+      <div class="row mb-3">
+        <div class="col-md-6">
+          <label class="form-label">Debug Probe</label>
+          <select class="form-select" id="c2000-debug-probe">
+            <option value="XDS110">XDS110</option>
+            <option value="XDS100v2">XDS100v2</option>
+            <option value="XDS200">XDS200</option>
+          </select>
+        </div>
+        <div class="col-md-6 d-flex align-items-end">
+          <button class="btn btn-primary me-2" id="c2000-config-save">Save Configuration</button>
+          <button class="btn btn-secondary" id="c2000-config-validate">Validate</button>
+        </div>
+      </div>
+      <div id="c2000-config-status" class="mt-2"></div>
+    </div>
+  </div>
+
+  <!-- Projects Section -->
+  <div class="card mt-4 mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <h5 class="mb-0">Projects</h5>
+      <button class="btn btn-sm btn-primary" id="c2000-projects-refresh">Refresh</button>
+    </div>
+    <div class="card-body">
+      <div id="c2000-projects-list" class="table-responsive">
+        <table class="table table-striped">
+          <thead>
+            <tr>
+              <th>Project Name</th>
+              <th>Path</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="c2000-projects-tbody">
+            <tr>
+              <td colspan="3" class="text-center">Loading projects...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Examples Section -->
+  <div class="card mt-4 mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <h5 class="mb-0">C2000Ware Examples</h5>
+      <button class="btn btn-sm btn-primary" id="c2000-examples-refresh">Refresh</button>
+    </div>
+    <div class="card-body">
+      <div class="mb-3">
+        <input type="text" class="form-control" id="c2000-examples-search" placeholder="Search examples...">
+      </div>
+      <div id="c2000-examples-list" class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+        <table class="table table-striped">
+          <thead>
+            <tr>
+              <th>Example Name</th>
+              <th>Path</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="c2000-examples-tbody">
+            <tr>
+              <td colspan="3" class="text-center">Loading examples...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Target Detection Section -->
+  <div class="card mt-4 mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <h5 class="mb-0">Target Detection</h5>
+      <button class="btn btn-sm btn-primary" id="c2000-target-detect-btn">Detect Targets</button>
+    </div>
+    <div class="card-body">
+      <div id="c2000-targets-list"></div>
+    </div>
+  </div>
+
+  <!-- Debugging Assistant Section -->
+  <div class="card mt-4 mb-4">
+    <div class="card-header">
+      <h5 class="mb-0">AI Debugging Assistant</h5>
+    </div>
+    <div class="card-body">
+      <div class="mb-3">
+        <label class="form-label">Project Name</label>
+        <input type="text" class="form-control" id="c2000-debug-project-name" placeholder="Project name">
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Issue Description</label>
+        <textarea class="form-control" id="c2000-debug-issue" rows="3" placeholder="Describe the issue you're experiencing..."></textarea>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Log Files (comma-separated paths)</label>
+        <input type="text" class="form-control" id="c2000-debug-log-files" placeholder="/path/to/log1.txt, /path/to/log2.txt">
+      </div>
+      <button class="btn btn-primary" id="c2000-debug-run">Run Debug Analysis</button>
+      <div id="c2000-debug-results" class="mt-3"></div>
+    </div>
+  </div>
+
+  <!-- Log Analysis Section -->
+  <div class="card mt-4 mb-4">
+    <div class="card-header">
+      <h5 class="mb-0">Log Analysis</h5>
+    </div>
+    <div class="card-body">
+      <div class="mb-3">
+        <label class="form-label">Log Files (comma-separated paths)</label>
+        <input type="text" class="form-control" id="c2000-logs-files" placeholder="/path/to/log1.txt, /path/to/log2.txt">
+      </div>
+      <button class="btn btn-primary" id="c2000-logs-analyze-btn">Analyze Logs</button>
+      <div id="c2000-logs-results" class="mt-3"></div>
+    </div>
+  </div>
+</div>
+
+
+
+
+
+
+
+
+
+

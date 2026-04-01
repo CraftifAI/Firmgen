@@ -1,0 +1,15 @@
+FROM python:3.11-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY refactapi.py caps.json ./
+COPY file_parsers ./file_parsers
+COPY board_definitions ./board_definitions
+COPY configs/esp32_tools.yaml ./default_esp32_tools.yaml
+
+EXPOSE 8002
+CMD ["uvicorn", "refactapi:app", "--host", "0.0.0.0", "--port", "8002"]

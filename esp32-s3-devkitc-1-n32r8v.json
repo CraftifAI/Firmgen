@@ -1,0 +1,174 @@
+{
+  "schema_version": "1.1",
+  "board_id": "esp32-s3-devkitc-1-n32r8v",
+  "board_version": "1.1.0",
+  "name": "ESP32-S3-DevKitC-1",
+  "variant": "N32R8V",
+  "description": "ESP32-S3-DevKitC-1 with 32MB Flash and 8MB PSRAM",
+  
+  "chip": {
+    "type": "esp32s3",
+    "min_revision": 0
+  },
+  
+  "identification": {
+    "chip_type": "esp32s3",
+    "flash_size_range": ["32MB"],
+    "psram_present": true,
+    "psram_size": "8MB",
+    "flash_manufacturer_ids": ["c2"],
+    "flash_device_ids": ["8039"]
+  },
+  
+  "hardware": {
+    "flash": {
+      "size": "32MB",
+      "size_config": "CONFIG_ESPTOOLPY_FLASHSIZE_32MB",
+      "mode": "qio",
+      "mode_config": "CONFIG_ESPTOOLPY_FLASHMODE_QIO",
+      "freq": "80m",
+      "freq_config": "CONFIG_ESPTOOLPY_FLASHFREQ_80M"
+    },
+    "psram": {
+      "enabled": true,
+      "size": "8MB",
+      "type": "embedded",
+      "mode": "quad",
+      "mode_config": "CONFIG_SPIRAM_MODE_QUAD"
+    },
+    "uart_console": {
+      "tx": 43,
+      "rx": 44,
+      "uart": "uart0"
+    },
+    "usb_jtag": {
+      "supported": true,
+      "d_minus": 19,
+      "d_plus": 20
+    }
+  },
+  
+  "gpio": {
+    "led": {
+      "pin": 38,
+      "type": "rgb",
+      "driver": "ws2812",
+      "notes": "RGB LED on GPIO 38 (v1.1 - v1.0 used GPIO 48)"
+    },
+    "button": {
+      "pin": 0,
+      "type": "button",
+      "pull": "pullup",
+      "notes": "Boot button (strapping pin)"
+    },
+    "safe_pins": [1, 2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 21, 33, 34, 35, 36, 37, 39, 40, 41, 42, 47, 48],
+    "restricted_pins": [0, 3, 19, 20, 26, 27, 28, 29, 30, 31, 32, 38, 45, 46],
+    "restricted_reasons": {
+      "0": "Boot button / strapping pin",
+      "3": "Strapping pin",
+      "19": "USB D-",
+      "20": "USB D+",
+      "26-32": "SPI Flash/PSRAM",
+      "38": "RGB LED (v1.1) - use for LED control only",
+      "45": "Strapping pin",
+      "46": "Strapping pin"
+    }
+  },
+  
+  "pwm": {
+    "defaults": {
+      "pin": 38,
+      "timer": 0,
+      "channel": 0,
+      "freq_hz": 5000,
+      "duty_resolution": 13,
+      "notes": "LEDC on RGB LED pin (GPIO 38 for v1.1, GPIO 48 for v1.0)"
+    },
+    "alternate_pins": [1, 2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 21, 48]
+  },
+  
+  "adc": {
+    "defaults": {
+      "pin": 1,
+      "channel": "ADC1_CH0",
+      "attenuation": "11dB",
+      "width": 12,
+      "notes": "ADC1 Channel 0"
+    },
+    "adc1_pins": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+    "adc2_pins": [11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
+    "notes": "ADC2 conflicts with WiFi when active"
+  },
+  
+  "wifi": {
+    "station": {
+      "sdkconfig": {
+        "CONFIG_ESP_WIFI_ENABLED": "y",
+        "CONFIG_ESP_WIFI_STA_ENABLE": "y",
+        "CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM": "10",
+        "CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM": "32",
+        "CONFIG_ESP_WIFI_TX_BUFFER_TYPE": "1",
+        "CONFIG_ESP_WIFI_DYNAMIC_TX_BUFFER_NUM": "32"
+      }
+    }
+  },
+  
+  "config_presets": {
+    "default": {
+      "description": "Standard configuration for ESP32-S3-DevKitC-1",
+      "tags": ["standard", "general"],
+      "use_cases": ["general development", "prototyping"],
+      "sdkconfig": {
+        "CONFIG_IDF_TARGET": "esp32s3",
+        "CONFIG_ESPTOOLPY_FLASHSIZE_32MB": "y",
+        "CONFIG_ESPTOOLPY_FLASHMODE_QIO": "y",
+        "CONFIG_ESPTOOLPY_FLASHFREQ_80M": "y",
+        "CONFIG_SPIRAM": "y",
+        "CONFIG_SPIRAM_MODE_QUAD": "y",
+        "CONFIG_ESP32S3_SPIRAM_SUPPORT": "y",
+        "CONFIG_SPIRAM_USE_MALLOC": "y"
+      }
+    },
+    "low_power": {
+      "extends": "default",
+      "description": "Optimized for battery operation",
+      "tags": ["low-power", "battery"],
+      "use_cases": ["battery-powered applications"],
+      "sdkconfig": {
+        "CONFIG_PM_ENABLE": "y",
+        "CONFIG_PM_DFS_INIT_AUTO": "y",
+        "CONFIG_ESP32S3_DEFAULT_CPU_FREQ_80": "y"
+      }
+    },
+    "wifi_station": {
+      "extends": "default",
+      "description": "WiFi Station mode configuration",
+      "tags": ["wifi", "station"],
+      "use_cases": ["WiFi client applications"],
+      "sdkconfig": {
+        "CONFIG_ESP_WIFI_ENABLED": "y",
+        "CONFIG_ESP_WIFI_STA_ENABLE": "y",
+        "CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM": "10",
+        "CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM": "32"
+      }
+    }
+  },
+  
+  "required_components": [],
+  "conflicting_components": ["esp-extconn"],
+  "recommended_components": [],
+  
+  "kb": {
+    "collection": "esp32-s3-devkitc-32n8r",
+    "pinout_doc": "01_board_docs/pinout_reference.md",
+    "board_summary_doc": "01_board_docs/board_summary.md",
+    "gpio_table_doc": "01_board_docs/gpio_pinout_esp32s3.inc",
+    "kconfig_symbols": "04_kconfig_symbols/config_symbols.jsonl"
+  },
+  
+  "documentation": {
+    "datasheet": "https://www.espressif.com/sites/default/files/documentation/esp32-s3-wroom-1_wroom-1u_datasheet_en.pdf",
+    "schematic": "https://dl.espressif.com/dl/schematics/SCH_ESP32-S3-DevKitC-1_V1.1_20220530.pdf",
+    "user_guide": "https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32s3/esp32-s3-devkitc-1/user_guide.html"
+  }
+}
