@@ -7,7 +7,6 @@ import {
   IconButton,
   Badge,
   Button,
-  TextField,
   Separator,
   Card,
 } from "@radix-ui/themes";
@@ -16,7 +15,6 @@ import {
   ChevronRightIcon,
   CopyIcon,
   DownloadIcon,
-  MagnifyingGlassIcon,
   DragHandleVerticalIcon,
 } from "@radix-ui/react-icons";
 import { useAppSelector } from "../../hooks";
@@ -43,6 +41,7 @@ import {
 import { selectLspPort, selectApiKey } from "../../features/Config/configSlice";
 import styles from "./ContextPayloadSidebar.module.css";
 import { TokenUsagePanel } from "./TokenUsagePanel";
+import classNames from "classnames";
 
 type ViewMode = "overview" | "messages" | "json" | "tokens" | "actual";
 
@@ -54,10 +53,20 @@ interface MessageBreakdown {
   hasToolCalls: number;
 }
 
-export const ContextPayloadSidebar: React.FC = () => {
+export type ContextPayloadSidebarVariant = "sidebar" | "page";
+
+type ContextPayloadSidebarProps = {
+  variant?: ContextPayloadSidebarVariant;
+  onBackToChat?: () => void;
+};
+
+export const ContextPayloadSidebar: React.FC<ContextPayloadSidebarProps> = ({
+  variant = "sidebar",
+  onBackToChat,
+}) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("overview");
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery] = useState("");
   const [expandedMessages, setExpandedMessages] = useState<Set<number>>(
     new Set()
   );
@@ -87,8 +96,8 @@ export const ContextPayloadSidebar: React.FC = () => {
   const apiKey = useAppSelector(selectApiKey);
   const subchatUsage = useAppSelector(selectSubchatUsageTotal);
   const subchatUsageByTool = useAppSelector(selectSubchatUsageByTool);
-  const maxContextTokens = useAppSelector(selectThreadMaximumTokens);
-  const currentContextTokens = useAppSelector(selectThreadCurrentMessageTokens);
+  useAppSelector(selectThreadMaximumTokens);
+  useAppSelector(selectThreadCurrentMessageTokens);
 
   // Format messages as they would be sent to the LLM
   const lspFormattedMessages = useMemo(() => {
@@ -301,6 +310,7 @@ export const ContextPayloadSidebar: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    if (variant !== "sidebar") return;
     if (!isResizing) return;
 
     const handleMouseMove = (e: MouseEvent) => {
@@ -336,9 +346,9 @@ export const ContextPayloadSidebar: React.FC = () => {
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     };
-  }, [isResizing]);
+  }, [isResizing, variant]);
 
-  if (isCollapsed) {
+  if (variant === "sidebar" && isCollapsed) {
     return (
       <Box className={styles.collapsedContainer}>
         <IconButton
@@ -355,12 +365,31 @@ export const ContextPayloadSidebar: React.FC = () => {
   return (
     <Box
       ref={panelRef}
-      className={styles.container}
-      style={{ width: `${panelWidth}px` }}
+      className={classNames(styles.container, {
+        [styles.pageContainer]: variant === "page",
+      })}
+      style={variant === "sidebar" ? { width: `${panelWidth}px` } : undefined}
     >
       {/* Header */}
-      <Flex className={styles.header} style={{ paddingLeft: "0px" }} justify="between" align="center">
+      <Flex
+        className={classNames(styles.header, {
+          [styles.pageHeader]: variant === "page",
+        })}
+        style={{ paddingLeft: "0px" }}
+        justify="between"
+        align="center"
+      >
         <Flex align="center" gap="2">
+          {variant === "page" && onBackToChat && (
+            <IconButton
+              variant="ghost"
+              size="2"
+              onClick={onBackToChat}
+              title="Back to chat"
+            >
+              <ChevronLeftIcon />
+            </IconButton>
+          )}
           <Text weight="bold" size="3">
             Context Payload
           </Text>
@@ -387,14 +416,16 @@ export const ContextPayloadSidebar: React.FC = () => {
           >
             <DownloadIcon />
           </IconButton>
-          <IconButton
-            variant="ghost"
-            size="2"
-            onClick={() => setIsCollapsed(true)}
-            title="Collapse Panel"
-          >
-            <ChevronLeftIcon />
-          </IconButton>
+          {variant === "sidebar" && (
+            <IconButton
+              variant="ghost"
+              size="2"
+              onClick={() => setIsCollapsed(true)}
+              title="Collapse Panel"
+            >
+              <ChevronLeftIcon />
+            </IconButton>
+          )}
         </Flex>
       </Flex>
 
@@ -408,10 +439,10 @@ export const ContextPayloadSidebar: React.FC = () => {
       >
         <Tabs.List className={styles.tabsList}>
           <Tabs.Trigger value="overview">Overview</Tabs.Trigger>
-          <Tabs.Trigger value="messages">Messages</Tabs.Trigger>
+          {/* <Tabs.Trigger value="messages">Messages</Tabs.Trigger> */}
           <Tabs.Trigger value="tokens">Tokens</Tabs.Trigger>
-          <Tabs.Trigger value="json">JSON</Tabs.Trigger>
-          <Tabs.Trigger value="actual">Actual LLM Payload</Tabs.Trigger>
+          {/* <Tabs.Trigger value="json">JSON</Tabs.Trigger>
+          <Tabs.Trigger value="actual">Actual LLM Payload</Tabs.Trigger> */}
         </Tabs.List>
 
         <Box className={styles.tabContent}>
@@ -894,14 +925,16 @@ export const ContextPayloadSidebar: React.FC = () => {
       </Tabs.Root>
 
       {/* Resize Handle */}
-      <Box
-        className={styles.resizeHandle}
-        onMouseDown={handleMouseDown}
-        style={{ cursor: isResizing ? 'col-resize' : 'ew-resize' }}
-        title="Drag to resize panel"
-      >
-        <DragHandleVerticalIcon />
-      </Box>
+      {variant === "sidebar" && (
+        <Box
+          className={styles.resizeHandle}
+          onMouseDown={handleMouseDown}
+          style={{ cursor: isResizing ? "col-resize" : "ew-resize" }}
+          title="Drag to resize panel"
+        >
+          <DragHandleVerticalIcon />
+        </Box>
+      )}
     </Box>
   );
 };

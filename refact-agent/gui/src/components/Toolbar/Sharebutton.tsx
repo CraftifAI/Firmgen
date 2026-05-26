@@ -107,7 +107,7 @@ export const Sharebutton = ({ chatId }: SharebuttonProps) => {
             ? "Share (open a chat first)"
             : busy
               ? "Preparing download..."
-              : "Download factory release ZIP for this chat"
+              : "Export Firmware Package"
         }
         aria-label="Share"
         aria-busy={busy}

@@ -4,12 +4,18 @@
 //! This includes session state, cache, and configuration.
 
 use lazy_static::lazy_static;
+use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Instant;
 use tokio::sync::RwLock;
+use serde_json::Value;
 
 use super::cache::ESP32Cache;
 use super::config::ESP32Config;
-use super::session_state::ESP32SessionState;
+use super::device_port_store::{
+    self, PersistedDevicePort, PortResolutionPolicy,
+};
+use super::session_state::{DeviceConnection, ESP32SessionState};
 use super::output_protocol::{SuggestedAction, ActionPriority};
 
 lazy_static! {
@@ -70,6 +76,64 @@ impl ESP32GlobalState {
     }
 }
 
+/// Strip `/v1/esp32-config` suffix when present; otherwise return trimmed URL.
+pub fn api_base_url_from_config_url(config_url: &str) -> String {
+    let trimmed = config_url.trim_end_matches('/');
+    if trimmed.ends_with("/v1/esp32-config") {
+        trimmed
+            .strip_suffix("/v1/esp32-config")
+            .unwrap_or(trimmed)
+            .to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+/// API server base URL (scheme + host + port) for `/v1/boards/...` and similar routes.
+///
+/// `REFACT_ESP32_CONFIG_URL` is the full esp32-config endpoint
+/// (e.g. `http://127.0.0.1:8002/v1/esp32-config`), not the server root — strip the path
+/// before building board URLs. Optional override: `REFACT_API_BASE_URL`.
+pub fn api_base_url() -> String {
+    if let Ok(base) = std::env::var("REFACT_API_BASE_URL") {
+        return base.trim_end_matches('/').to_string();
+    }
+
+    let config_url = std::env::var("REFACT_ESP32_CONFIG_URL")
+        .unwrap_or_else(|_| "http://localhost:8002".to_string());
+    api_base_url_from_config_url(&config_url)
+}
+
+/// Full URL for GET `/v1/boards/{board_id}`.
+pub fn board_definition_url(board_id: &str) -> String {
+    format!("{}/v1/boards/{}", api_base_url(), board_id)
+}
+
+#[cfg(test)]
+mod api_url_tests {
+    use super::*;
+
+    #[test]
+    fn api_base_url_strips_esp32_config_path() {
+        assert_eq!(
+            api_base_url_from_config_url("http://127.0.0.1:8002/v1/esp32-config"),
+            "http://127.0.0.1:8002"
+        );
+        assert_eq!(
+            format!("{}/v1/boards/{}", api_base_url_from_config_url("http://127.0.0.1:8002/v1/esp32-config"), "esp32-c6-devkitc-1"),
+            "http://127.0.0.1:8002/v1/boards/esp32-c6-devkitc-1"
+        );
+    }
+
+    #[test]
+    fn api_base_url_passes_through_plain_base() {
+        assert_eq!(
+            api_base_url_from_config_url("http://localhost:8002"),
+            "http://localhost:8002"
+        );
+    }
+}
+
 impl Default for ESP32GlobalState {
     fn default() -> Self {
         Self::new()
@@ -103,8 +167,115 @@ pub async fn get_config() -> Result<ESP32Config, String> {
 
 /// Convenience function to get session state summary
 pub async fn get_session_summary(max_tokens: usize) -> String {
+    hydrate_session_from_disk().await;
     let state = get_state().await;
     state.session.get_context_summary(max_tokens)
+}
+
+/// Load persisted device port into in-memory session (once per process).
+pub async fn hydrate_session_from_disk() {
+    if device_port_store::hydration_complete() {
+        return;
+    }
+
+    if let Some(persisted) = device_port_store::load_persisted_device_port().await {
+        let mut state = get_state_mut().await;
+        if state.session.active_device.is_none() {
+            state.session.active_device = Some(DeviceConnection {
+                port: persisted.port.clone(),
+                chip: if persisted.chip.is_empty() {
+                    "unknown".to_string()
+                } else {
+                    persisted.chip.clone()
+                },
+                mac_address: if persisted.mac_address.is_empty() {
+                    "unknown".to_string()
+                } else {
+                    persisted.mac_address.clone()
+                },
+                flash_size: if persisted.flash_size.is_empty() {
+                    "unknown".to_string()
+                } else {
+                    persisted.flash_size.clone()
+                },
+                connected_at: Instant::now(),
+            });
+        }
+    }
+
+    device_port_store::mark_hydration_complete();
+}
+
+/// Record the active device port in session and on disk.
+pub async fn record_device_port(
+    port: &str,
+    chip: &str,
+    mac_address: &str,
+    flash_size: &str,
+    source: &str,
+) {
+    {
+        let mut state = get_state_mut().await;
+        state.session.active_device = Some(DeviceConnection {
+            port: port.to_string(),
+            chip: chip.to_string(),
+            mac_address: mac_address.to_string(),
+            flash_size: flash_size.to_string(),
+            connected_at: Instant::now(),
+        });
+    }
+
+    let record = PersistedDevicePort::new(port, chip, mac_address, flash_size, source);
+    device_port_store::persist_device_port(&record).await;
+}
+
+/// Update session + disk after flash/monitor using the port that was actually used.
+pub async fn record_device_port_in_use(port: &str, source: &str) {
+    let (chip, mac, flash_size) = {
+        let state = get_state().await;
+        if let Some(dev) = &state.session.active_device {
+            (
+                dev.chip.clone(),
+                dev.mac_address.clone(),
+                dev.flash_size.clone(),
+            )
+        } else {
+            (
+                "unknown".to_string(),
+                "unknown".to_string(),
+                "unknown".to_string(),
+            )
+        }
+    };
+    record_device_port(port, &chip, &mac, &flash_size, source).await;
+}
+
+/// Deterministic serial port resolution shared by esp32_device operations.
+pub async fn resolve_device_port(
+    config: &ESP32Config,
+    args: &HashMap<String, Value>,
+    policy: PortResolutionPolicy,
+) -> Result<String, String> {
+    hydrate_session_from_disk().await;
+
+    let explicit = args.get("port").and_then(|v| v.as_str());
+    let (session_port, persisted_port) = {
+        let state = get_state().await;
+        let session_port = state.session.active_device.as_ref().map(|d| d.port.clone());
+        drop(state);
+        let persisted_port = device_port_store::load_persisted_device_port()
+            .await
+            .map(|p| p.port);
+        (session_port, persisted_port)
+    };
+
+    device_port_store::resolve_port_from_candidates(
+        explicit,
+        session_port.as_deref(),
+        persisted_port.as_deref(),
+        &config.default_serial_port,
+        policy,
+    )
 }
 
 /// Generate suggested actions based on operation result

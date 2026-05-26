@@ -5,15 +5,18 @@ import json
 import asyncio
 import uuid
 import os
+import platform
 import random
 import subprocess
-from typing import Optional, List, Dict, Any, Callable, Literal, DefaultDict, Union
+from typing import Optional, List, Dict, Any, Callable, Literal, DefaultDict, Union, AsyncIterator
 from collections import defaultdict
 from dataclasses import dataclass, field
 
 import aiohttp
 from pydantic import BaseModel, ConfigDict
 
+
+# ── Data Models ────────────────────────────────────────────────────────────────
 
 class FunctionDict(BaseModel):
     arguments: str
@@ -55,6 +58,95 @@ class Caps(BaseModel):
     chat_default_model: str
 
 
+# ── Tool Group Models ──────────────────────────────────────────────────────────
+
+class ToolSource(BaseModel):
+    source_type: str = "builtin"
+    config_path: str = ""
+
+
+class ToolSpec(BaseModel):
+    name: str = ""
+    display_name: str = ""
+    description: str = ""
+    parameters: List[Dict[str, Any]] = []
+    source: Optional[ToolSource] = None
+    agentic: bool = False
+    experimental: bool = False
+
+
+class ToolEntry(BaseModel):
+    spec: ToolSpec
+    enabled: bool = True
+
+
+class ToolGroup(BaseModel):
+    name: str
+    category: str = "builtin"
+    description: str = ""
+    tools: List[ToolEntry] = []
+
+
+class ToolGroupUpdate(BaseModel):
+    name: str
+    source: ToolSource
+    enabled: bool
+
+
+# ── Tool Confirmation Models ───────────────────────────────────────────────────
+
+class ConfirmationPauseReason(BaseModel):
+    type: str  # "confirmation" or "denial"
+    command: str = ""
+    rule: str = ""
+    tool_call_id: str = ""
+    integr_config_path: Optional[str] = None
+
+
+class ConfirmationResponse(BaseModel):
+    pause: bool = False
+    pause_reasons: List[ConfirmationPauseReason] = []
+
+
+# ── SSE Helpers ────────────────────────────────────────────────────────────────
+
+async def _iter_sse_events(response: aiohttp.ClientResponse) -> AsyncIterator[str]:
+    """Yield complete SSE data payloads from an HTTP response.
+
+    Correctly handles:
+    - Events spanning multiple HTTP chunks
+    - Multiple events in a single HTTP chunk
+    - Empty-line event delimiters per SSE spec
+    - `data:` prefix stripping
+    """
+    buffer = ""
+    async for raw_chunk in response.content:
+        buffer += raw_chunk.decode("utf-8", errors="replace")
+        # Process all complete lines in the buffer
+        while "\n" in buffer:
+            line, buffer = buffer.split("\n", 1)
+            line = line.rstrip("\r")
+            if not line:
+                # Empty line = event boundary (SSE spec), but we yield per data line
+                continue
+            if line.startswith("data: "):
+                payload = line[6:]
+                if payload == "[DONE]":
+                    return
+                yield payload
+            # Ignore other SSE fields (event:, id:, retry:, comments)
+
+    # Handle any remaining data in buffer (no trailing newline)
+    if buffer.strip():
+        line = buffer.strip()
+        if line.startswith("data: "):
+            payload = line[6:]
+            if payload != "[DONE]":
+                yield payload
+
+
+# ── Delta Collector ────────────────────────────────────────────────────────────
+
 class ChoiceDeltaCollector:
     def __init__(self, n_answers: int):
         self.n_answers = n_answers
@@ -88,6 +180,17 @@ class ChoiceDeltaCollector:
                 choice.content += plus_content
             elif "finish_reason" in j_choice:
                 choice.finish_reason = j_choice.get("finish_reason", "")
+            # Collect thinking blocks
+            if "thinking_blocks" in delta:
+                if choice.thinking_blocks is None:
+                    choice.thinking_blocks = []
+                for tb in delta["thinking_blocks"]:
+                    choice.thinking_blocks.append(tb)
+
+
+# ── LSP Runner ─────────────────────────────────────────────────────────────────
+
+IS_WIN = platform.system() == "Windows"
 
 
 class LSPRunner:
@@ -115,12 +218,24 @@ class LSPRunner:
                 "--logs-stderr",
                 f"--http-port={self._port}",
             ]
-            self._process = await asyncio.create_subprocess_exec(
-                self._binary, *args,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.PIPE,
-                limit=1024 * 1024 * 64,
-            )
+
+            if IS_WIN:
+                # On Windows, use CREATE_NO_WINDOW to avoid popping a console
+                self._process = await asyncio.create_subprocess_exec(
+                    self._binary, *args,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
+                    limit=1024 * 1024 * 64,
+                    creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0,
+                )
+            else:
+                self._process = await asyncio.create_subprocess_exec(
+                    self._binary, *args,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
+                    limit=1024 * 1024 * 64,
+                )
+
             listening = False
             port_busy = False
             while True:
@@ -181,6 +296,27 @@ class LSPRunner:
         await self.stop()
 
 
+# ── Port Detection ─────────────────────────────────────────────────────────────
+
+def detect_default_port() -> int:
+    """Detect the best default port to connect to.
+
+    If the CraftifAI desktop app is likely running (port 8486), use that.
+    Otherwise fall back to the standard refact-lsp port (8001).
+    """
+    import socket
+    for port in (8486, 8001):
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=0.3):
+                return port
+        except (ConnectionRefusedError, OSError, socket.timeout):
+            continue
+    # Default to CraftifAI desktop port
+    return 8486
+
+
+# ── Agent Client ───────────────────────────────────────────────────────────────
+
 class AgentClient:
     """High-level client for the Refact Agent HTTP API."""
 
@@ -219,6 +355,29 @@ class AgentClient:
                 return []
             return json.loads(text)
 
+    async def fetch_tool_groups(self) -> List[ToolGroup]:
+        """Fetch tool groups with their enabled/disabled state."""
+        raw = await self.fetch_tools()
+        groups = []
+        for item in raw:
+            try:
+                groups.append(ToolGroup(**item))
+            except Exception:
+                continue
+        return groups
+
+    async def update_tool_groups(self, updates: List[Dict[str, Any]]) -> bool:
+        """Update tool group enabled/disabled state via POST /v1/tools."""
+        session = await self._get_session()
+        try:
+            async with session.post(
+                f"{self.base_url}/tools",
+                json={"tools": updates},
+            ) as resp:
+                return resp.status == 200
+        except Exception:
+            return False
+
     async def fetch_rag_status(self) -> Dict[str, Any]:
         try:
             session = await self._get_session()
@@ -244,6 +403,57 @@ class AgentClient:
         except Exception:
             return []
 
+    async def check_tool_confirmation(
+        self,
+        tool_calls: List[ToolCallDict],
+        messages: List[Message],
+    ) -> ConfirmationResponse:
+        """Check if any tool calls require user confirmation before execution.
+
+        Calls POST /v1/tools-check-if-confirmation-needed.
+        """
+        session = await self._get_session()
+        msgs_dicts = [m.model_dump(exclude_none=True) for m in messages]
+        tc_dicts = [tc.model_dump(exclude_none=True) for tc in tool_calls]
+        try:
+            async with session.post(
+                f"{self.base_url}/tools-check-if-confirmation-needed",
+                json={"tool_calls": tc_dicts, "messages": msgs_dicts},
+            ) as resp:
+                if resp.status != 200:
+                    return ConfirmationResponse(pause=False, pause_reasons=[])
+                data = await resp.json(content_type=None)
+                return ConfirmationResponse(**data)
+        except Exception:
+            return ConfirmationResponse(pause=False, pause_reasons=[])
+
+    async def fetch_checkpoints_preview(self, chat_id: str) -> List[Dict[str, Any]]:
+        """Fetch checkpoint list via POST /v1/checkpoints-preview."""
+        session = await self._get_session()
+        try:
+            async with session.post(
+                f"{self.base_url}/checkpoints-preview",
+                json={"chat_id": chat_id},
+            ) as resp:
+                if resp.status != 200:
+                    return []
+                data = await resp.json(content_type=None)
+                return data if isinstance(data, list) else data.get("checkpoints", [])
+        except Exception:
+            return []
+
+    async def restore_checkpoint(self, chat_id: str, checkpoint_id: str) -> bool:
+        """Restore a checkpoint via POST /v1/checkpoints-restore."""
+        session = await self._get_session()
+        try:
+            async with session.post(
+                f"{self.base_url}/checkpoints-restore",
+                json={"chat_id": chat_id, "checkpoint_id": checkpoint_id},
+            ) as resp:
+                return resp.status == 200
+        except Exception:
+            return False
+
     async def fetch_links(
         self,
         chat_id: str,
@@ -251,11 +461,7 @@ class AgentClient:
         model: str,
         chat_mode: str = "AGENT",
     ) -> List[Dict[str, Any]]:
-        """Call POST /v1/links to get follow-up action buttons for the current chat state.
-
-        Returns a list of link dicts, each with at least 'link_text' and 'link_action'.
-        Only 'follow-up' actions are useful as clickable chat buttons.
-        """
+        """Call POST /v1/links to get follow-up action buttons."""
         try:
             msgs_dicts = [m.model_dump(exclude_none=True) for m in messages]
             payload = {
@@ -284,12 +490,16 @@ class AgentClient:
         *,
         max_tokens: int = 4096,
         temperature: float = 0.3,
+        chat_mode: str = "AGENT",
+        esp32_projects_path: Optional[str] = None,
+        checkpoints_enabled: bool = True,
+        boost_reasoning: bool = False,
         on_data: Optional[Callable[[Dict[str, Any], ChoiceDeltaCollector], None]] = None,
     ) -> List[Message]:
-        """Send a chat request with streaming; calls on_data for every SSE chunk."""
+        """Send a chat request with streaming; calls on_data for every SSE event."""
         msgs_dicts = []
         for m in messages:
-            d = {"role": m.role, "content": m.content}
+            d: Dict[str, Any] = {"role": m.role, "content": m.content}
             if m.role == "assistant":
                 if m.tool_calls:
                     d["tool_calls"] = [tc.model_dump(exclude_none=True) for tc in m.tool_calls]
@@ -299,19 +509,26 @@ class AgentClient:
                 d["tool_call_id"] = m.tool_call_id
             msgs_dicts.append(d)
 
-        post_me = {
+        meta: Dict[str, Any] = {
+            "chat_id": chat_id,
+            "chat_mode": chat_mode,
+        }
+        if esp32_projects_path and esp32_projects_path.strip():
+            meta["esp32_projects_path"] = esp32_projects_path.strip()
+
+        post_me: Dict[str, Any] = {
             "model": model,
             "messages": msgs_dicts,
             "temperature": temperature,
             "stream": True,
             "max_tokens": max_tokens,
             "only_deterministic_messages": False,
-            "checkpoints_enabled": True,
-            "meta": {
-                "chat_id": chat_id,
-                "chat_mode": "AGENT",
-            },
+            "checkpoints_enabled": checkpoints_enabled,
+            "meta": meta,
         }
+
+        if boost_reasoning:
+            post_me["parameters"] = {"boost_reasoning": True}
 
         deterministic: List[Message] = []
         subchats: DefaultDict[str, List[Message]] = defaultdict(list)
@@ -320,21 +537,11 @@ class AgentClient:
 
         session = await self._get_session()
         async with session.post(f"{self.base_url}/chat", json=post_me) as resp:
-            buffer = b""
-            async for data, end_of_chunk in resp.content.iter_chunks():
-                buffer += data
-                if not end_of_chunk:
+            async for payload in _iter_sse_events(resp):
+                try:
+                    j = json.loads(payload)
+                except json.JSONDecodeError:
                     continue
-                line_str = buffer.decode("utf-8").strip()
-                buffer = b""
-                if not line_str:
-                    continue
-                if not line_str.startswith("data: "):
-                    continue
-                line_str = line_str[6:]
-                if line_str == "[DONE]":
-                    break
-                j = json.loads(line_str)
 
                 if "choices" in j and len(j.get("choices", [])) > 0:
                     if u := j.get("usage"):
@@ -391,23 +598,15 @@ class AgentClient:
         )
 
     async def workflow_events(self):
-        """Generator yielding workflow SSE events."""
+        """Generator yielding workflow SSE events (using proper SSE parsing)."""
         session = await self._get_session()
         try:
             async with session.get(f"{self.base_url}/workflow/events") as resp:
-                buffer = b""
-                async for data, end_of_chunk in resp.content.iter_chunks():
-                    buffer += data
-                    if not end_of_chunk:
+                async for payload in _iter_sse_events(resp):
+                    try:
+                        yield json.loads(payload)
+                    except json.JSONDecodeError:
                         continue
-                    line_str = buffer.decode("utf-8").strip()
-                    buffer = b""
-                    if not line_str or not line_str.startswith("data: "):
-                        continue
-                    payload = line_str[6:]
-                    if payload == "[DONE]":
-                        break
-                    yield json.loads(payload)
         except (aiohttp.ClientError, asyncio.CancelledError):
             pass
 

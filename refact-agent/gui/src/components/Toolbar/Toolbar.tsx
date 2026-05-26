@@ -7,7 +7,8 @@ import type { DropdownNavigationOptions } from "./Dropdown";
 import Sharebutton from "./Sharebutton";
 import { newChatAction } from "../../events";
 import { restart, useTourRefs } from "../../features/Tour";
-import { popBackTo, push } from "../../features/Pages/pagesSlice";
+// import { popBackTo, push } from "../../features/Pages/pagesSlice";
+import { popBackTo, push ,selectCurrentPage } from "../../features/Pages/pagesSlice";
 import {
   ChangeEvent,
   KeyboardEvent,
@@ -77,6 +78,8 @@ export const Toolbar = ({ activeTab }: ToolbarProps) => {
 
   const [isOnlyOneChatTab, setIsOnlyOneChatTab] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
+  const currentPage = useAppSelector(selectCurrentPage);
+  const showSharebutton = currentPage?.name !== "history"&&currentPage?.name !== "login page";
   const [newTitle, setNewTitle] = useState<string | null>(null);
 
   const shouldChatTabLinkBeNotClickable = useMemo(() => {
@@ -107,15 +110,14 @@ export const Toolbar = ({ activeTab }: ToolbarProps) => {
           error_message: "",
         });
       } else if (to === "stats") {
-        dispatch(push({ name: "statistics page" }));
+        dispatch(push({ name: "context payload page" }));
         void sendTelemetryEvent({
           scope: `openStats`,
           success: true,
           error_message: "",
         });
       } else if (to === "restart tour") {
-        dispatch(popBackTo({ name: "login page" }));
-        dispatch(push({ name: "welcome" }));
+        dispatch(popBackTo({ name: "history" }));
         dispatch(restart());
         void sendTelemetryEvent({
           scope: `restartTour`,
@@ -402,7 +404,8 @@ export const Toolbar = ({ activeTab }: ToolbarProps) => {
             <Text>New chat</Text>
           </Button>
         ))} */}
-      <Sharebutton chatId={chatId} />
+      {/* <Sharebutton chatId={chatId} /> */}
+      {showSharebutton && <Sharebutton chatId={chatId} />}
     </Flex>
   );
 };

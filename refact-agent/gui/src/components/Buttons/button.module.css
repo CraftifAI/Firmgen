@@ -15,6 +15,15 @@
   position: absolute;
   /* right: 10px; */
   right: var(--space-1);
+  box-sizing: border-box;
+  width: 100%;
+  background: var(
+    --refact-pre-copy-group-bg,
+    var(
+      --refact-markdown-code-pre-bg,
+      var(--refact-code-block-pre-bg, var(--refact-default-code-pre-bg, #0a182b))
+    )
+  );
 }
 
 .button_faded {

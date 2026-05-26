@@ -349,6 +349,21 @@ pub fn canonicalize_normalized_path(p: PathBuf) -> PathBuf {
     p.canonicalize().unwrap_or_else(|_| absolute(&p).unwrap_or(p))
 }
 
+/// Cheap path normalization for paths that are already absolute.
+///
+/// Unlike `canonical_path()` this makes **zero filesystem calls** — it only strips the
+/// Windows extended-length prefix (`\\?\`) that can appear on paths returned by git or
+/// WalkDir.  On Linux/macOS it is a no-op.
+///
+/// Use this instead of `canonical_path()` for paths sourced from:
+///  - git index / `git ls-files` output  (always absolute after joining with repo root)
+///  - `WalkDir::DirEntry::path()`         (always absolute)
+///
+/// Do NOT use it on user-supplied strings that may contain `..` segments or be relative.
+pub fn fast_normalize_path(path: &std::path::Path) -> PathBuf {
+    dunce::simplified(path).to_path_buf()
+}
+
 pub async fn check_if_its_inside_a_workspace_or_config(gcx: Arc<ARwLock<GlobalContext>>, path: &Path) -> Result<(), String> {
     let workspace_folders = get_project_dirs(gcx.clone()).await;
     let config_dir = gcx.read().await.config_dir.clone();

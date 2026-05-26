@@ -32,7 +32,8 @@ import { DevicePanels } from "../EmbeddedPanels";
 // import { ContextPayloadSidebar } from "../ContextPayloadSidebar";
 import { ChatHistorySidebar } from "../ChatHistorySidebar";
 import { selectEmbedded } from "../../features/Config/configSlice";
-import { ProgressBar } from "../ProgressBar";
+import { ProgressBarSafe as ProgressBar } from "../ProgressBar";
+import { ComposerQuickActions } from "./ComposerQuickActions";
 
 export type ChatProps = {
   host: Config["host"];
@@ -84,8 +85,18 @@ export const Chat: React.FC<ChatProps> = ({
     console.log("Chat component - hasEmbeddedFeatures:", hasEmbeddedFeatures);
   }, [hasEmbeddedFeatures]);
 
+  // Keep a stable ref to resetForNewRun so handleSummit doesn't recreate on
+  // every render (progressApi is a new object every render and must not be in
+  // the callback dependency array).
+  const resetForNewRunRef = React.useRef(progressApi.resetForNewRun);
+  React.useEffect(() => {
+    resetForNewRunRef.current = progressApi.resetForNewRun;
+  });
+
   const handleSummit = useCallback(
     (value: string) => {
+      // Clear stale progress so the bar resets before new tool events arrive.
+      try { resetForNewRunRef.current?.(); } catch (_) { /* never block submit */ }
       submit({ question: value });
       if (isViewingRawJSON) {
         setIsViewingRawJSON(false);
@@ -126,6 +137,7 @@ export const Chat: React.FC<ChatProps> = ({
             unCalledTools={unCalledTools}
           />
         </Flex>
+        <ComposerQuickActions disabled={isStreaming}/>
         <Text size="1" style={{ color: "var(--gray-9)" }}>
           FirmGen may make mistakes. Verify important outputs.
         </Text>

@@ -1,7 +1,8 @@
-import { useState, useCallback, useSyncExternalStore } from "react";
+import { useState, useCallback, useSyncExternalStore, useEffect } from "react";
 import { CRAFTIF_API_BASE } from "../config/craftifApiBase";
 
 const DISPLAY_NAME_CHANGE_EVENT = "craftif-display-name-changed";
+const SESSION_JWT_STORAGE_KEY = "craftif_session_jwt";
 
 function notifyDisplayNameChanged() {
     if (typeof window !== "undefined") {
@@ -22,7 +23,69 @@ export interface User {
     username?: string;
 }
 
-export let sessionJwt: string | null = null;
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+    const parts = token.split(".");
+    if (parts.length < 2) return null;
+    try {
+        const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+        const padded = b64 + "=".repeat((4 - (b64.length % 4 || 4)) % 4);
+        const decoded = atob(padded);
+        return JSON.parse(decoded) as Record<string, unknown>;
+    } catch {
+        return null;
+    }
+}
+
+function isJwtExpired(token: string): boolean {
+    const payload = decodeJwtPayload(token);
+    const exp = payload?.exp;
+    if (typeof exp !== "number") return false;
+    const nowInSeconds = Math.floor(Date.now() / 1000);
+    return exp <= nowInSeconds;
+}
+
+function clearStoredSessionJwt(): void {
+    try {
+        if (typeof window !== "undefined") {
+            localStorage.removeItem(SESSION_JWT_STORAGE_KEY);
+        }
+    } catch {
+        /* ignore */
+    }
+}
+
+/** Clears in-memory + persisted Craftif JWT (shared with useLogout). */
+export function clearCraftifSessionJwt(): void {
+    sessionJwt = null;
+    clearStoredSessionJwt();
+}
+
+function persistSessionJwt(token: string): void {
+    try {
+        if (typeof window !== "undefined") {
+            localStorage.setItem(SESSION_JWT_STORAGE_KEY, token);
+        }
+    } catch {
+        /* ignore */
+    }
+}
+
+function readStoredSessionJwt(): string | null {
+    if (typeof window === "undefined") return null;
+    try {
+        const token = localStorage.getItem(SESSION_JWT_STORAGE_KEY);
+        if (!token) return null;
+        if (isJwtExpired(token)) {
+            clearStoredSessionJwt();
+            return null;
+        }
+        return token;
+    } catch {
+        return null;
+    }
+}
+
+export let sessionJwt: string | null = readStoredSessionJwt();
 
 const DISPLAY_NAME_STORAGE_KEY = "craftif_display_name";
 
@@ -88,6 +151,17 @@ export const useCraftifAuth = () => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
+    useEffect(() => {
+        if (!sessionJwt) return;
+        void fetch("http://127.0.0.1:8002/v1/proxy-set-jwt", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ token: sessionJwt }),
+        }).catch(() => {
+            /* best-effort during app startup */
+        });
+    }, []);
+
     const login = useCallback(async (email: string, password: string, displayNameHint?: string) => {
         setLoading(true);
         setError(null);
@@ -110,6 +184,7 @@ export const useCraftifAuth = () => {
 
             setJwt(data.token);
             sessionJwt = data.token;
+            persistSessionJwt(data.token);
 
             // Push the JWT out-of-band directly to the local python proxy.
             // This bypasses the Rust agent's reliance on `cli.yaml` dummy keys.
@@ -159,7 +234,7 @@ export const useCraftifAuth = () => {
 
             if (!resp.ok) {
                 const errorData = await resp.json().catch(() => ({}));
-                throw new Error(errorData.message || "Registration failed.");
+                throw new Error(errorData.error || errorData.message || "Registration failed.");
             }
 
             const data = await resp.json();
@@ -173,9 +248,67 @@ export const useCraftifAuth = () => {
         }
     }, []);
 
+    /**
+     * Step 1 of FirmGen OTP signup: sends a 6-digit OTP to the user's email.
+     * POST /auth/send-signup-otp  { email, password }
+     */
+    const sendSignupOtp = useCallback(async (email: string, password: string) => {
+        setLoading(true);
+        setError(null);
+        try {
+            const resp = await fetch(`${CRAFTIF_API_BASE}/auth/send-signup-otp`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email, password }),
+            });
+
+            if (!resp.ok) {
+                const errorData = await resp.json().catch(() => ({}));
+                throw new Error(errorData.error || errorData.message || "Failed to send verification code.");
+            }
+
+            return await resp.json() as { message: string };
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : "An unknown error occurred.";
+            setError(message);
+            throw err;
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    /**
+     * Step 2 of FirmGen OTP signup: verifies the OTP and creates the user account.
+     * POST /auth/verify-signup-otp  { email, otp, appSource: "FirmGen" }
+     */
+    const verifySignupOtp = useCallback(async (email: string, otp: string) => {
+        setLoading(true);
+        setError(null);
+        try {
+            const resp = await fetch(`${CRAFTIF_API_BASE}/auth/verify-signup-otp`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email, otp, appSource: "FirmGen" }),
+            });
+
+            if (!resp.ok) {
+                const errorData = await resp.json().catch(() => ({}));
+                throw new Error(errorData.error || errorData.message || "OTP verification failed.");
+            }
+
+            return await resp.json() as { id: string; email: string };
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : "An unknown error occurred.";
+            setError(message);
+            throw err;
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
     const logout = useCallback(() => {
         setJwt(null);
-        sessionJwt = null;
+        clearCraftifSessionJwt();
         setUser(null);
         clearStoredCraftifDisplayName();
         setError(null);
@@ -189,6 +322,8 @@ export const useCraftifAuth = () => {
         error,
         login,
         register,
+        sendSignupOtp,
+        verifySignupOtp,
         logout,
     };
 };

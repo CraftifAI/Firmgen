@@ -4,7 +4,10 @@ import { usePostMessage } from "./usePostMessage";
 import { EVENT_NAMES_FROM_SETUP } from "../events/setup";
 import { setAddressURL, setApiKey } from "../features/Config/configSlice";
 import { smallCloudApi } from "../services/smallcloud";
-import { clearStoredCraftifDisplayName } from "./useCraftifAuth";
+import {
+  clearCraftifSessionJwt,
+  clearStoredCraftifDisplayName,
+} from "./useCraftifAuth";
 
 export const useLogout = () => {
   const postMessage = usePostMessage();
@@ -12,6 +15,8 @@ export const useLogout = () => {
   const [removeUser, _] = smallCloudApi.useRemoveUserFromCacheMutation();
 
   const logout = useCallback(() => {
+    // Must clear before Redux clears apiKey, or App.tsx re-applies setupHost(sessionJwt).
+    clearCraftifSessionJwt();
     clearStoredCraftifDisplayName();
     postMessage({ type: EVENT_NAMES_FROM_SETUP.LOG_OUT });
     dispatch(setApiKey(null));

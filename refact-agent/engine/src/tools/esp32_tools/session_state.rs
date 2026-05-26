@@ -167,7 +167,7 @@ impl ESP32SessionState {
         // Device state (1 line)
         if let Some(dev) = &self.active_device {
             summary.push_str(&format!(
-                "DEVICE: {} {} connected\n",
+                "DEVICE: {} {} connected (active port for flash/monitor)\n",
                 dev.chip, dev.port
             ));
         } else {

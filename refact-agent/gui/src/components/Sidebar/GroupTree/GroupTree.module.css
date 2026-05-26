@@ -18,6 +18,21 @@ div > .sidebarTree {
   color: var(--accent-9);
 }
 
+.welcomeContainer h1 {
+  text-align: center;
+  width: 100%;
+  justify-content: center;
+  align-items: center;
+}
+
+.welcomeSubtitle {
+  text-align: center;
+  width: 100%;
+  justify-content: center;
+  align-items: center;
+}
+
+
 /* Improve focus styles */
 .sidebarTree [data-focus="true"] {
   outline: 2px solid var(--accent-7);

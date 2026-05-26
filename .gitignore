@@ -26,11 +26,10 @@
 __pycache__/
 *.py[cod]
 *$py.class
-_*
 !__fixtures__
 !__tests__
 
-# Include python init files, ignored by _*
+# Include python init files
 !**/__init__.py
 
 # C extensions
@@ -44,8 +43,9 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
 lib64/
+# Ignore Python packaging lib/ artifacts only (not source lib/ folders)
+*.egg-info/lib/
 # Allow GUI src/lib (required for refact-agent/gui dev and build)
 !refact-agent/gui/src/lib/
 parts/
@@ -187,6 +187,8 @@ workdir
 
 # rust
 Cargo.lock
+# Keep the engine binary's lock file for reproducible builds
+!refact-agent/engine/Cargo.lock
 
 # Rust build artifacts (can be rebuilt)
 refact-agent/engine/target/
@@ -302,6 +304,10 @@ dist
 
 # vite cache
 .vite
+vite.config.ts.timestamp-*.mjs
+
+# Electron desktop build output
+craftifai-desktop/dist-out/
 # Refact binary/symlink
 **/refact/bin/refact-lsp
 

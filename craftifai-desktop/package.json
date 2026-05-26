@@ -16,9 +16,10 @@
     "build:deb": "electron-builder --linux deb",
     "build:all": "electron-builder --linux AppImage deb",
     "dist:linux": "npm run build:gui && npm run build:all",
-    "build:win": "electron-builder --win",
-    "build:win-nsis": "electron-builder --win nsis",
-    "build:win-portable": "electron-builder --win portable",
+    "prepare-electron-output": "node scripts/prepare-electron-output.js",
+    "build:win": "npm run prepare-electron-output && electron-builder --win",
+    "build:win-nsis": "npm run prepare-electron-output && electron-builder --win nsis",
+    "build:win-portable": "npm run prepare-electron-output && electron-builder --win portable",
     "dist:win-portable": "npm run build:gui && npm run build:win-portable",
     "build:win-all": "electron-builder --win nsis portable",
     "postinstall": "electron-builder install-app-deps"

@@ -13,10 +13,12 @@ use crate::call_validation::{ChatMessage, ChatContent, ContextEnum};
 use super::config::ESP32Config;
 use super::output_protocol::ToolOutput;
 use super::idf_command::{IdfCommand, infer_project_path, list_serial_ports as get_serial_ports};
-use super::global_state::{get_config, get_state, get_state_mut, generate_suggested_actions, SuggestionContext};
+use super::global_state::{
+    get_config, get_state, get_state_mut, generate_suggested_actions, SuggestionContext,
+    board_definition_url, resolve_device_port, record_device_port, record_device_port_in_use,
+};
+use super::device_port_store::PortResolutionPolicy;
 use super::board_definition::BoardDefinition;
-use super::session_state::DeviceConnection;
-use std::time::Instant;
 
 pub struct ESP32Device {
     pub config_path: String,
@@ -36,7 +38,7 @@ impl Tool for ESP32Device {
             },
             agentic: true,
             experimental: false,
-            description: "Interact with ESP32 devices. Operations: detect (find connected devices, reads chip info, sets active port in session, and performs fast heuristic compatibility check if board_id is set), verify (validate device - uses board_id from --board-definition CLI if set, or accepts override), flash (program firmware), monitor (capture serial output), erase (erase flash), info (get chip information). For board-specific details (GPIO, pinouts, examples), use search_semantic tool with board_id in scope.".to_string(),
+            description: "Interact with ESP32 devices. Operations: detect (find connected devices, reads chip info, sets active port in session, and performs fast heuristic compatibility check if board_id is set), verify (validate device - uses board_id from --board-definition CLI if set, or accepts override), flash (program firmware), monitor (capture serial output), erase (erase flash), info (get chip information).".to_string(),
             parameters: vec![
                 ToolParam {
                     name: "operation".to_string(),
@@ -46,7 +48,7 @@ impl Tool for ESP32Device {
                 ToolParam {
                     name: "port".to_string(),
                     param_type: "string".to_string(),
-                    description: "Serial port (e.g., /dev/ttyUSB0). Auto-detected if not specified.".to_string(),
+                    description: "Serial port (e.g., COM96, /dev/ttyUSB0). Omit after detect — session and persisted port are used automatically. Do not pass the yaml default (COM3) if detect found a different port.".to_string(),
                 },
                 ToolParam {
                     name: "board_id".to_string(),
@@ -150,22 +152,6 @@ impl Tool for ESP32Device {
 }
 
 impl ESP32Device {
-    async fn resolve_port(&self, config: &ESP32Config, args: &HashMap<String, Value>) -> String {
-        // 1) Explicit override
-        if let Some(port) = args.get("port").and_then(|v| v.as_str()) {
-            return port.to_string();
-        }
-
-        // 2) Session active device (set by detect/info)
-        let state = get_state().await;
-        if let Some(active) = &state.session.active_device {
-            return active.port.clone();
-        }
-
-        // 3) Fallback
-        config.default_serial_port.clone()
-    }
-
     fn parse_mb_from_string(s: &str) -> Option<u32> {
         let lower = s.to_lowercase();
         let mb_pos = lower.find("mb")?;
@@ -392,17 +378,11 @@ impl ESP32Device {
                         let revision = info_data.get("revision").and_then(|v| v.as_str()).map(|s| s.to_string());
                         let features = info_data.get("features").and_then(|v| v.as_str()).map(|s| s.to_string());
 
-                        let mut state = get_state_mut().await;
-                        state.session.active_device = Some(DeviceConnection {
-                            port: port.to_string(),
-                            chip: chip.clone(),
-                            mac_address: mac.clone(),
-                            flash_size: flash_size.clone(),
-                            connected_at: Instant::now(),
-                        });
-                        let board_id = state.session.board_id.clone();
-                        let board_verified = state.session.board_verified;
-                        drop(state);
+                        record_device_port(port, &chip, &mac, &flash_size, "detect").await;
+                        let (board_id, board_verified) = {
+                            let state = get_state().await;
+                            (state.session.board_id.clone(), state.session.board_verified)
+                        };
 
                         // Offline heuristic verification from board_id name
                         if let Some(board_id) = board_id.as_deref() {
@@ -488,17 +468,11 @@ impl ESP32Device {
                                 let revision = info_data.get("revision").and_then(|v| v.as_str()).map(|s| s.to_string());
                                 let features = info_data.get("features").and_then(|v| v.as_str()).map(|s| s.to_string());
 
-                                let mut state = get_state_mut().await;
-                                state.session.active_device = Some(DeviceConnection {
-                                    port: cand.to_string(),
-                                    chip: chip.clone(),
-                                    mac_address: mac.clone(),
-                                    flash_size: flash_size.clone(),
-                                    connected_at: Instant::now(),
-                                });
-                                let board_id = state.session.board_id.clone();
-                                let board_verified = state.session.board_verified;
-                                drop(state);
+                                record_device_port(cand, &chip, &mac, &flash_size, "detect").await;
+                                let (board_id, board_verified) = {
+                                    let state = get_state().await;
+                                    (state.session.board_id.clone(), state.session.board_verified)
+                                };
 
                                 if let Some(board_id) = board_id.as_deref() {
                                     let expected = Self::parse_board_id_hints(board_id);
@@ -569,15 +543,13 @@ impl ESP32Device {
                         if !fallback_handled {
                             // As a last resort, remember the original auto-detected port with minimal info,
                             // so the user (or LLM) can still explicitly try info/flash on it.
-                            let mut state = get_state_mut().await;
-                            state.session.active_device = Some(DeviceConnection {
-                                port: port.to_string(),
-                                chip: chip_short.to_string(),
-                                mac_address: "unknown".to_string(),
-                                flash_size: "unknown".to_string(),
-                                connected_at: Instant::now(),
-                            });
-                            drop(state);
+                            record_device_port(
+                                port,
+                                chip_short,
+                                "unknown",
+                                "unknown",
+                                "detect",
+                            ).await;
                             let minimal = format!(
                                 "Detected device:\n- port: {}\n- chip: {} (from esptool)\nFull chip info (MAC, flash) could not be read. Use esp32_device(operation=\"info\", port=\"{}\") to retry.",
                                 port, chip_short, port
@@ -681,7 +653,7 @@ impl ESP32Device {
     }
 
     async fn flash_device(&self, config: &ESP32Config, args: &HashMap<String, Value>) -> Result<ToolOutput, String> {
-        let port = self.resolve_port(config, args).await;
+        let port = resolve_device_port(config, args, PortResolutionPolicy::PreferKnown).await?;
 
         // Infer project path
         let explicit_path = args.get("project_path").and_then(|v| v.as_str());
@@ -707,6 +679,8 @@ impl ESP32Device {
             .execute(config).await?;
 
         if result.success {
+            record_device_port_in_use(&port, "flash").await;
+
             // Generate suggested actions for successful flash
             let suggested_actions = generate_suggested_actions(
                 "flash",
@@ -756,7 +730,7 @@ impl ESP32Device {
     }
 
     async fn monitor_device(&self, config: &ESP32Config, args: &HashMap<String, Value>) -> Result<ToolOutput, String> {
-        let port = self.resolve_port(config, args).await;
+        let port = resolve_device_port(config, args, PortResolutionPolicy::RequireKnown).await?;
 
         let project_path = args.get("project_path")
             .and_then(|v| v.as_str())
@@ -772,8 +746,9 @@ impl ESP32Device {
             .or_else(|| config.default_monitor_baud_rate.map(|v| v as u64))
             .unwrap_or(config.default_baud_rate as u64);
 
-        // Use pyserial with DTR/RTS reset logic (simpler approach, like original)
-        // This adds the reset sequence that idf.py monitor does, but keeps the simple readline approach
+        // Use pyserial with DTR/RTS reset logic (same reset workflow as before).
+        // Capture uses raw byte reads for the full duration window so one-shot boot
+        // logs are not discarded. Stale bytes are cleared only before reset, never after.
         // signal.SIGALRM / signal.alarm are Unix-only and not available on Windows.
         // The outer tokio::time::timeout already enforces the duration limit, so the
         // Python-side timeout loop (time.time() check) is sufficient on all platforms.
@@ -783,31 +758,41 @@ import serial
 import sys
 import time
 
+# Force UTF-8 encoding on stdout/stderr to avoid Windows charmap codec errors
+# when serial data contains non-ASCII bytes (e.g. ESP32 boot garbage)
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
+def read_available(ser):
+    waiting = ser.in_waiting
+    if waiting > 0:
+        return ser.read(waiting)
+    return ser.read(1)
+
 try:
     # Open serial port
-    ser = serial.Serial('{}', {}, timeout=1)
-    
+    ser = serial.Serial('{}', {}, timeout=0.2)
+
+    # Drop stale bytes from port-open glitches before the intentional reset.
+    ser.reset_input_buffer()
+
     # ESP32 reset sequence via DTR/RTS (triggers device reset)
-    # Set both high, then both low to trigger reset
     ser.setDTR(True)
     ser.setRTS(True)
     time.sleep(0.1)
     ser.setDTR(False)
     ser.setRTS(False)
-    time.sleep(0.5)  # Wait for device to boot after reset
-    
-    # Clear any buffered data
-    ser.reset_input_buffer()
-    
-    # Read output for specified duration
+
+    # Read for the full capture window (includes boot logs). Do not clear the RX
+    # buffer after reset — that was dropping one-shot startup output.
     start_time = time.time()
     while time.time() - start_time < {}:
-        if ser.in_waiting > 0:
-            line = ser.readline()
-            if line:
-                sys.stdout.write(line.decode('utf-8', errors='replace'))
-                sys.stdout.flush()
-        time.sleep(0.1)
+        chunk = read_available(ser)
+        if chunk:
+            sys.stdout.write(chunk.decode('utf-8', errors='replace'))
+            sys.stdout.flush()
     ser.close()
 except Exception as e:
     sys.stderr.write(f"Error: {{e}}\n")
@@ -825,28 +810,26 @@ except Exception as e:
         cmd.current_dir(&project_path);
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::piped());
+        // Force UTF-8 encoding for the subprocess (belt-and-suspenders with the in-script reconfigure)
+        cmd.env("PYTHONIOENCODING", "utf-8");
 
-        let _start_time = std::time::Instant::now();
         let output = tokio::time::timeout(
-            std::time::Duration::from_secs(duration + 5),
+            std::time::Duration::from_secs(duration + 8),
             cmd.output()
         ).await
-        .map_err(|_| format!("Monitor operation timed out after {}s", duration + 5))?
+        .map_err(|_| format!("Monitor operation timed out after {}s", duration + 8))?
         .map_err(|e| format!("Failed to monitor device: {}", e))?;
 
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
 
-        // Filter out any error messages that aren't actual serial data
-        let filtered_output: String = stdout.lines()
-            .filter(|line| {
-                !line.trim().is_empty() &&
-                !line.contains("Error:")  // Filter Python errors from output
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
+        // Treat any non-whitespace serial data as captured output. Line-based filtering
+        // dropped valid boot logs that did not end with newlines.
+        let filtered_output = stdout.trim().to_string();
+        let has_serial_output = !filtered_output.is_empty()
+            && !filtered_output.starts_with("Error:");
         
-        let details = if !filtered_output.is_empty() {
+        let details = if has_serial_output {
             Some(format!("STDOUT\n```\n{}\n```", filtered_output))
         } else if !stderr.is_empty() {
             Some(format!("STDERR\n```\n{}\n```", stderr))
@@ -855,13 +838,17 @@ except Exception as e:
         };
         
         // Determine status based on whether we got output
-        let status = if !filtered_output.is_empty() {
+        let status = if has_serial_output {
             super::output_protocol::ToolStatus::Success
         } else if output.status.success() {
             super::output_protocol::ToolStatus::PartialSuccess
         } else {
             super::output_protocol::ToolStatus::Failed
         };
+
+        if matches!(status, super::output_protocol::ToolStatus::Success | super::output_protocol::ToolStatus::PartialSuccess) {
+            record_device_port_in_use(&port, "monitor").await;
+        }
         
         Ok(ToolOutput {
             status,
@@ -882,7 +869,7 @@ except Exception as e:
     }
 
     async fn erase_flash(&self, config: &ESP32Config, args: &HashMap<String, Value>) -> Result<ToolOutput, String> {
-        let port = self.resolve_port(config, args).await;
+        let port = resolve_device_port(config, args, PortResolutionPolicy::PreferKnown).await?;
 
         // Infer project path (allow explicit override like other operations)
         let explicit_path = args.get("project_path").and_then(|v| v.as_str());
@@ -906,7 +893,7 @@ except Exception as e:
     }
 
     async fn get_chip_info(&self, config: &ESP32Config, args: &HashMap<String, Value>) -> Result<ToolOutput, String> {
-        let port = self.resolve_port(config, args).await;
+        let port = resolve_device_port(config, args, PortResolutionPolicy::PreferKnown).await?;
 
         // Get chip info using IdfCommand::esptool
         let chip_result = IdfCommand::esptool("chip-id")
@@ -1053,6 +1040,14 @@ except Exception as e:
             format!("Chip info from {}: {}", port, summary_parts.join(", "))
         };
 
+        record_device_port(
+            &port,
+            chip_type.as_deref().unwrap_or("unknown"),
+            mac.as_deref().unwrap_or("unknown"),
+            flash_size.as_deref().unwrap_or("unknown"),
+            "info",
+        ).await;
+
         Ok(ToolOutput::success(
             summary,
             serde_json::json!({
@@ -1152,10 +1147,7 @@ except Exception as e:
         let state = get_state().await;
         let cache = &state.cache;
 
-        // API URL for board definitions
-        let api_url = std::env::var("REFACT_ESP32_CONFIG_URL")
-            .unwrap_or_else(|_| "http://localhost:8002".to_string());
-        let board_url = format!("{}/v1/boards/{}", api_url, board_id);
+        let board_url = board_definition_url(board_id);
 
         cache.get_board_definition(board_id, async {
             let client = reqwest::Client::builder()

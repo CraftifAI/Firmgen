@@ -10,7 +10,7 @@ protocol.registerSchemesAsPrivileged([{
 }]);
 const path = require('path');
 const fs = require('fs');
-const { spawn, execSync } = require('child_process');
+const { spawn, spawnSync, execSync } = require('child_process');
 const http = require('http');
 const os = require('os');
 
@@ -81,6 +81,12 @@ let mainWindow  = null;
 let tray        = null;
 let isQuitting  = false;
 
+function requestFullQuit() {
+  if (isQuitting) return;
+  isQuitting = true;
+  app.quit();
+}
+
 // ─── Python venv management ───────────────────────────────────────────────────
 const VENV_DIR = path.join(CONFIG_DIR, 'venv');
 
@@ -90,19 +96,118 @@ function getPythonBin() {
     : path.join(VENV_DIR, 'bin', 'python3');
 }
 
-function getSystemPython() {
-  if (!IS_WIN) return 'python3';
-  // On Windows, prefer the Python Launcher (py.exe) which picks the correct
-  // CPython installation and ignores MSYS2/MinGW python on PATH.
-  // Fall back to 'python3', then 'python' if py.exe isn't installed.
-  const { execSync } = require('child_process');
-  for (const cmd of ['py', 'python3', 'python']) {
+function pythonWorks(executable, prefixArgs = []) {
+  try {
+    const result = spawnSync(executable, [...prefixArgs, '--version'], {
+      encoding: 'utf8',
+      timeout: 10000,
+      windowsHide: true,
+    });
+    if (result.status !== 0) return false;
+    const out = `${result.stdout || ''}${result.stderr || ''}`;
+    return /Python 3\.\d+/i.test(out);
+  } catch (_) {
+    return false;
+  }
+}
+
+function collectWindowsPythonCandidates() {
+  const seen = new Set();
+  const candidates = [];
+
+  const add = (executable, prefixArgs = []) => {
+    const key = `${executable}\0${prefixArgs.join('\0')}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    candidates.push({ executable, prefixArgs });
+  };
+
+  // Python Launcher registrations (py -0p), skipping broken installs.
+  try {
+    const listing = execSync('py -0p', { encoding: 'utf8', timeout: 10000 });
+    for (const line of listing.split(/\r?\n/)) {
+      const match = line.match(/([A-Za-z]:\\[^\s]+\\python\.exe)\s*$/i);
+      if (match) add(match[1]);
+    }
+  } catch (_) {}
+
+  // Standard per-user and system install locations.
+  const localAppData = process.env.LOCALAPPDATA || '';
+  const programFiles = process.env.ProgramFiles || 'C:\\Program Files';
+  for (const ver of ['314', '313', '312', '311', '310']) {
+    add(path.join(localAppData, 'Programs', 'Python', `Python${ver}`, 'python.exe'));
+    add(path.join(programFiles, `Python${ver}`, 'python.exe'));
+  }
+
+  // Resolve PATH shims to real executables where possible.
+  for (const cmd of ['python3.14', 'python3.13', 'python3.12', 'python3.11', 'python3.10', 'python3', 'python']) {
     try {
-      execSync(`${cmd} --version`, { stdio: 'ignore' });
-      return cmd;
+      const resolved = execSync(`where.exe ${cmd}`, { encoding: 'utf8', timeout: 5000 })
+        .split(/\r?\n/)
+        .map(s => s.trim())
+        .filter(Boolean);
+      for (const exe of resolved) {
+        if (/\\WindowsApps\\/i.test(exe)) continue; // skip Store stub
+        add(exe);
+      }
     } catch (_) {}
   }
-  return 'python';
+
+  // py.exe launcher as a last-resort fallback.
+  const pyExe = path.join(process.env.WINDIR || 'C:\\Windows', 'py.exe');
+  if (fs.existsSync(pyExe)) add(pyExe, ['-3']);
+
+  return candidates;
+}
+
+/**
+ * Returns { executable, prefixArgs } for creating the managed venv.
+ * Throws if no working Python 3 is found.
+ */
+function getSystemPython() {
+  if (!IS_WIN) {
+    for (const cmd of ['python3', 'python']) {
+      if (pythonWorks(cmd)) return { executable: cmd, prefixArgs: [] };
+    }
+    throw new Error('Python 3 not found. Install Python 3.10+ and ensure it is on PATH.');
+  }
+
+  const tried = [];
+  for (const candidate of collectWindowsPythonCandidates()) {
+    tried.push(candidate.prefixArgs.length
+      ? `${candidate.executable} ${candidate.prefixArgs.join(' ')}`
+      : candidate.executable);
+    if (pythonWorks(candidate.executable, candidate.prefixArgs)) {
+      return candidate;
+    }
+  }
+
+  throw new Error(
+    'Python 3 not found. Install Python 3.10+ from https://www.python.org/downloads/ ' +
+    '(check "Add python.exe to PATH"), then click Retry.\n\n' +
+    `Tried: ${tried.slice(0, 8).join('; ')}${tried.length > 8 ? '…' : ''}`
+  );
+}
+
+/** Directory containing a working python.exe — used to extend PATH for ESP-IDF export.ps1. */
+function getSystemPythonBinDir() {
+  try {
+    const py = getSystemPython();
+    if (py.prefixArgs.length === 0 && py.executable.toLowerCase().endsWith('python.exe')) {
+      return path.dirname(py.executable);
+    }
+    if (path.basename(py.executable).toLowerCase() === 'py.exe') {
+      const result = spawnSync(py.executable, [...py.prefixArgs, '-c', 'import sys; print(sys.executable)'], {
+        encoding: 'utf8',
+        timeout: 10000,
+        windowsHide: true,
+      });
+      if (result.status === 0 && result.stdout.trim()) {
+        return path.dirname(result.stdout.trim());
+      }
+    }
+  } catch (_) {}
+  return null;
 }
 
 /**
@@ -131,10 +236,15 @@ async function ensurePythonVenv(statusCb) {
     statusCb('Creating Python environment (first run, one-time setup)…');
     log('VENV', `Creating venv at ${VENV_DIR}`);
     await new Promise((resolve, reject) => {
-      const sysPy = getSystemPython();
-      // 'py' launcher needs '-3' to target Python 3 explicitly
-      const args = sysPy === 'py' ? ['-3', '-m', 'venv', VENV_DIR] : ['-m', 'venv', VENV_DIR];
-      const p = spawn(sysPy, args);
+      let sysPy;
+      try {
+        sysPy = getSystemPython();
+      } catch (err) {
+        reject(err);
+        return;
+      }
+      log('VENV', `Using system Python: ${sysPy.prefixArgs.length ? sysPy.prefixArgs.join(' ') + ' ' : ''}${sysPy.executable}`);
+      const p = spawn(sysPy.executable, [...sysPy.prefixArgs, '-m', 'venv', VENV_DIR]);
       p.stderr.on('data', d => log('VENV', d.toString().trimEnd()));
       p.on('exit', code => code === 0 ? resolve() : reject(new Error(`venv creation failed (exit ${code}). Make sure Python 3 is installed from python.org`)));
     });
@@ -201,7 +311,7 @@ function spawnAPI(settings) {
 function syncEsp32Config(settings) {
   const idfExport  = settings.idf_export_sh || '';
   const idfPath    = idfExport ? path.dirname(idfExport) : '';
-  const projectsPath = settings.workspace_folder
+  const projectsPath = settings.project_dir
     || path.join(os.homedir(), 'craftifai-workspace');
 
   // YAML double-quoted scalars treat backslashes as escapes (e.g. "\E" is invalid),
@@ -271,6 +381,71 @@ tools:
   log('CONFIG', `  esp_idf_path=${idfPath || '(not set)'},  projects_path=${projectsPath}`);
 }
 
+/**
+ * Write a project-level indexing.yaml into CONFIG_DIR the first time it is
+ * missing.  The file blocks directories that are never useful to index in an
+ * ESP32 / firmware workspace (build artefacts, toolchain caches, JS deps, …).
+ * Passing it via --indexing-yaml means refact-lsp never tries to walk or AST-
+ * parse those trees, which dramatically reduces first-scan time on Windows
+ * when the AI Agent Sandbox points at a large parent folder.
+ */
+function ensureIndexingYaml() {
+  const indexingYamlPath = path.join(CONFIG_DIR, 'indexing.yaml');
+  if (fs.existsSync(indexingYamlPath)) return indexingYamlPath;
+
+  const content = [
+    '# Auto-generated by CraftifAI — edit to customise what the AI indexes.',
+    '# Paths are matched as glob patterns relative to each workspace root.',
+    'blocklist:',
+    '  # Hidden directories (.git, .svn, .idea, …)',
+    '  - "*/.*"',
+    '  # Generic build / output dirs',
+    '  - "*/target/*"',
+    '  - "*/build/*"',
+    '  - "*/dist/*"',
+    '  - "*/out/*"',
+    '  - "*/obj/*"',
+    '  - "*/bin/*"',
+    '  - "*/pkg/*"',
+    '  - "*/lib/*"',
+    '  # Dependency caches',
+    '  - "*/node_modules/*"',
+    '  - "*/vendor/*"',
+    '  - "*/venv/*"',
+    '  - "*/env/*"',
+    '  - "*/.venv/*"',
+    '  # Temp / log dirs',
+    '  - "*/tmp/*"',
+    '  - "*/temp/*"',
+    '  - "*/logs/*"',
+    '  - "*/coverage/*"',
+    '  - "*/backup/*"',
+    '  # Python bytecode',
+    '  - "*/__pycache__/*"',
+    '  # Build-system internals',
+    '  - "*/.gradle/*"',
+    '  - "*/_trajectories/*"',
+    '  # ESP-IDF / ESP32 toolchain artefacts',
+    '  - "*/.espressif/*"',
+    '  - "*/managed_components/*"',
+    '  - "*/bootloader_build/*"',
+    '  - "*/x_tools/*"',
+    '  - "*/.idf_tools/*"',
+    '  - "*/esp-idf/*"',
+    '  - "*/xtensa-esp*/*"',
+  ].join('\n') + '\n';
+
+  try {
+    fs.mkdirSync(CONFIG_DIR, { recursive: true });
+    fs.writeFileSync(indexingYamlPath, content, 'utf8');
+    log('MAIN', `Created indexing.yaml at ${indexingYamlPath}`);
+  } catch (e) {
+    log('MAIN', `WARNING: could not write indexing.yaml: ${e.message}`);
+    return null;
+  }
+  return indexingYamlPath;
+}
+
 function spawnLSP(settings) {
   const lspBinName = IS_WIN ? 'refact-lsp.exe' : 'refact-lsp';
   const lspBin = res('bin', lspBinName);
@@ -280,22 +455,31 @@ function spawnLSP(settings) {
     throw new Error(`refact-lsp binary not found at: ${lspBin}\nRun ${hint} first.`);
   }
 
-  const workspaceFolder = settings.workspace_folder
+  const workspaceFolder = settings.project_dir
     || path.join(os.homedir(), 'craftifai-workspace');
   fs.mkdirSync(workspaceFolder, { recursive: true });
 
   const board = settings.board_definition || 'esp32-s3-DevKitM-1-N16R8';
 
+  // Custom indexing blocklist — created once by ensureIndexingYaml().
+  // Keeps the file-walk scope small even without AST indexing.
+  const indexingYamlPath = ensureIndexingYaml();
+
+  // --ast is intentionally omitted: enabling it triggers a full file-content
+  // parse that can take 10-15 minutes on a large sandbox on Windows (NTFS I/O
+  // + ReadDirectoryChangesW watcher).  The agent works fine without it for
+  // firmware generation (file read/write, idf.py build, flash, ESP32 tools).
+  // If you want symbol search re-add --ast here; pair it with --ast-permanent
+  // so subsequent launches load from the cache instead of re-parsing.
   const lspArgs = [
     '--address-url',      'http://127.0.0.1:8002',
-    '--api-key',          settings.openai_api_key,
-    '--ast',
-    '--ast-max-files',    '20000',
+    '--api-key',          settings.openai_api_key || '',
     '--logs-stderr',
     '--http-port=8486',
     '--platform',         'esp32',
     '--board-definition', board,
     '--workspace-folder', workspaceFolder,
+    ...(indexingYamlPath ? ['--indexing-yaml', indexingYamlPath] : []),
   ];
 
   let proc;
@@ -307,10 +491,15 @@ function spawnLSP(settings) {
     const escapedArgs = lspArgs.map(a => `'${a.replace(/'/g, "''")}'`).join(' `\n  ');
 
     let script = '# Auto-generated by CraftifAI — do not edit\n';
-    script += '$ErrorActionPreference = "Stop"\n\n';
+    script += '$ErrorActionPreference = "Continue"\n\n';
+    const pythonBinDir = getSystemPythonBinDir();
+    if (pythonBinDir) {
+      script += `# Ensure Python is on PATH for ESP-IDF export.ps1\n`;
+      script += `$env:Path = "${pythonBinDir};${pythonBinDir}\\Scripts;" + $env:Path\n\n`;
+    }
     if (settings.idf_export_sh && fs.existsSync(settings.idf_export_sh)) {
-      script += `# Activate ESP-IDF environment\n`;
-      script += `& "${settings.idf_export_sh}"\n\n`;
+      script += `# Activate ESP-IDF environment (best-effort — agent still starts if this fails)\n`;
+      script += `try {\n  & "${settings.idf_export_sh}"\n} catch {\n  Write-Warning "ESP-IDF export failed (agent will still start): $_"\n}\n\n`;
       log('LSP', `Wrapper will run IDF export: ${settings.idf_export_sh}`);
     } else {
       log('LSP', 'WARNING: idf_export_sh not set or not found — idf.py commands will fail');
@@ -321,7 +510,7 @@ function spawnLSP(settings) {
 
     fs.writeFileSync(wrapperPath, script, 'utf8');
     log('LSP', `Wrapper written to: ${wrapperPath}`);
-    log('LSP', `board=${board}  workspace=${workspaceFolder}`);
+    log('LSP', `board=${board}  project_dir=${workspaceFolder}`);
 
     proc = spawn('powershell.exe', [
       '-ExecutionPolicy', 'Bypass', '-NoProfile', '-File', wrapperPath,
@@ -345,7 +534,7 @@ function spawnLSP(settings) {
 
     fs.writeFileSync(wrapperPath, script, { mode: 0o755 });
     log('LSP', `Wrapper written to: ${wrapperPath}`);
-    log('LSP', `board=${board}  workspace=${workspaceFolder}`);
+    log('LSP', `board=${board}  project_dir=${workspaceFolder}`);
 
     proc = spawn('bash', [wrapperPath], {
       env: { ...process.env, OPENAI_API_KEY: settings.openai_api_key },
@@ -380,6 +569,29 @@ function waitForAPI(timeoutMs = 60000) {
   });
 }
 
+function waitForLSP(timeoutMs = 90000) {
+  return new Promise((resolve, reject) => {
+    const deadline = Date.now() + timeoutMs;
+    const check = () => {
+      const req = http.get('http://127.0.0.1:8486/v1/ping', res => {
+        if (res.statusCode === 200) { resolve(); return; }
+        res.resume();
+        scheduleNext();
+      });
+      req.on('error', scheduleNext);
+      req.end();
+    };
+    const scheduleNext = () => {
+      if (Date.now() >= deadline) {
+        reject(new Error('AI agent did not restart within timeout. Check logs for LSP errors.'));
+        return;
+      }
+      setTimeout(check, 1500);
+    };
+    check();
+  });
+}
+
 // ─── Window Helpers ───────────────────────────────────────────────────────────
 function createWindow(opts) {
   return new BrowserWindow({
@@ -406,8 +618,55 @@ function sendToRenderer(channel, ...args) {
   }
 }
 
-// ─── Launch App (post-setup) ──────────────────────────────────────────────────
-async function launchApp(settings) {
+/**
+ * POST /v1/lsp-initialize with the previously saved sandbox path so refact-lsp
+ * resumes watching that folder on startup.  With --ast-permanent the engine
+ * loads the cached index and only re-parses files that changed, keeping the
+ * restart latency small even for large sandboxes.
+ */
+function restoreSandboxPath(folderPath) {
+  let folderUrl;
+  if (/^[A-Za-z]:[\\/]/.test(folderPath)) {
+    folderUrl = `file:///${folderPath.replace(/\\/g, '/')}`;
+  } else {
+    folderUrl = folderPath.startsWith('/') ? `file://${folderPath}` : `file:///${folderPath}`;
+  }
+
+  const body = JSON.stringify({ project_roots: [folderUrl] });
+  const req = http.request({
+    hostname: '127.0.0.1',
+    port: 8486,
+    path: '/v1/lsp-initialize',
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
+  }, (res) => {
+    res.resume();
+    log('MAIN', `Restored sandbox path on startup: ${folderPath} (HTTP ${res.statusCode})`);
+  });
+  req.on('error', (e) => log('MAIN', `Could not restore sandbox path: ${e.message}`));
+  req.write(body);
+  req.end();
+}
+
+// ─── Launch App ───────────────────────────────────────────────────────────────
+async function launchApp(incomingSettings) {
+  // On first run, write a placeholder settings.json so downstream code has
+  // defined values. The user will fill in the real values from the Welcome page
+  // after login — those are saved via the 'save-wizard-settings' IPC handler.
+  let settings = incomingSettings;
+  if (!fs.existsSync(CONFIG_FILE)) {
+    const placeholder = {
+      openai_api_key:   '',
+      idf_export_sh:    null,
+      board_definition: null,
+      project_dir:      null,
+      setup_complete:   false,
+    };
+    saveSettings(placeholder);
+    settings = placeholder;
+    log('MAIN', 'First run — placeholder settings.json written');
+  }
+
   // Show loading page immediately
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'loading.html'));
   mainWindow.once('ready-to-show', () => mainWindow.show());
@@ -427,13 +686,23 @@ async function launchApp(settings) {
     await waitForAPI();
     log('MAIN', 'API is up');
 
+    // Inject the selected board definition into the LLM context
+    notifyActiveBoardToAPI(settings.board_definition || 'esp32-s3-DevKitM-1-N16R8');
+
     // 4. Start refact-lsp — wrapper script sources IDF in same shell (like run-all-docker-esp32.sh)
-    sendToRenderer('status', 'Starting AI agent (refact-lsp)…');
+    sendToRenderer('status', 'Starting AI agent…');
     lspProcess = spawnLSP(settings);
 
     // Give LSP 2s to bind its HTTP port
     await new Promise(r => setTimeout(r, 2000));
     log('MAIN', 'All services started');
+
+    // Restore previously saved sandbox folder so the agent resumes indexing
+    // without the user having to re-open the wizard on every launch.
+    // We fire-and-forget: if it fails the wizard still lets the user set it again.
+    if (settings.sandbox_path) {
+      restoreSandboxPath(settings.sandbox_path);
+    }
 
     // 4. Load the main GUI via custom protocol (fixes absolute asset paths like /new_logo.png)
     log('MAIN', `Loading GUI via app://localhost/ → ${res('gui')}`);
@@ -460,23 +729,92 @@ function setupTray() {
     { type: 'separator' },
     { label: 'Open Log Folder', click: () => shell.openPath(LOG_DIR) },
     { type: 'separator' },
-    { label: 'Quit', click: () => { isQuitting = true; app.quit(); } },
+    { label: 'Quit', click: () => requestFullQuit() },
   ]);
   tray.setToolTip('CraftifAI ESP32 Agent');
   tray.setContextMenu(menu);
   tray.on('activate', () => { if (mainWindow) mainWindow.show(); });
 }
 
+function setupAppMenu() {
+  const menu = Menu.buildFromTemplate([
+    {
+      label: 'File',
+      submenu: [
+        { label: 'Exit', click: () => requestFullQuit() },
+      ],
+    },
+  ]);
+  Menu.setApplicationMenu(menu);
+}
+
+// ─── Board context injection ──────────────────────────────────────────────────
+/**
+ * Notify refactapi of the active board so it can inject board knowledge into
+ * every LLM chat request from session start.
+ */
+function notifyActiveBoardToAPI(boardId) {
+  if (!boardId) return;
+  const body = JSON.stringify({ board_id: boardId });
+  const req = http.request(
+    { hostname: '127.0.0.1', port: 8002, path: '/v1/set-active-board', method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } },
+    (res) => {
+      res.resume();
+      log('MAIN', `set-active-board → ${boardId} (HTTP ${res.statusCode})`);
+    }
+  );
+  req.on('error', (e) => log('MAIN', `set-active-board request failed: ${e.message}`));
+  req.write(body);
+  req.end();
+}
+
 // ─── IPC Handlers ─────────────────────────────────────────────────────────────
 ipcMain.handle('get-settings', () => loadSettings());
 
-ipcMain.handle('save-and-launch', async (_event, formData) => {
+// Called by the Welcome page after login to persist ESP32 configuration.
+// Updates settings.json + esp32_tools.yaml immediately and restarts refact-lsp
+// so CLI-only settings (board/workspace) apply without restarting the app.
+ipcMain.handle('save-wizard-settings', async (_event, data) => {
   try {
-    formData.setup_complete = true;
-    saveSettings(formData);
-    await launchApp(formData);
+    const current = loadSettings();
+    const merged = { ...current, ...data, setup_complete: true };
+    saveSettings(merged);
+    // Ensure project_dir exists on disk
+    if (merged.project_dir) {
+      fs.mkdirSync(merged.project_dir, { recursive: true });
+    }
+    syncEsp32Config(merged);
+
+    // Restart only LSP so --board-definition / --workspace-folder take effect now.
+    try {
+      if (lspProcess && lspProcess.pid) {
+        log('MAIN', `Restarting LSP (pid ${lspProcess.pid}) to apply new settings…`);
+        if (IS_WIN) {
+          try { execSync(`taskkill /PID ${lspProcess.pid} /T /F`, { stdio: 'ignore' }); } catch (_) {}
+        } else {
+          try { lspProcess.kill('SIGTERM'); } catch (_) {}
+        }
+      }
+      lspProcess = spawnLSP(merged);
+      try {
+        await waitForLSP();
+        log('MAIN', 'Wizard settings saved; esp32_tools.yaml updated; LSP restarted and ready');
+      } catch (e) {
+        log('MAIN', `WARNING: LSP restarted but not reachable yet: ${e.message}`);
+        return { ok: false, error: e.message };
+      }
+    } catch (e) {
+      log('MAIN', `WARNING: LSP restart failed after saving wizard settings: ${e.message}`);
+      log('MAIN', 'Wizard settings saved and esp32_tools.yaml updated (LSP not restarted)');
+    }
+
+    // Update the LLM board context to match the newly selected board
+    notifyActiveBoardToAPI(merged.board_definition || 'esp32-s3-DevKitM-1-N16R8');
+
     return { ok: true };
   } catch (e) {
+    log('MAIN', `save-wizard-settings failed: ${e.message}`);
     return { ok: false, error: e.message };
   }
 });
@@ -522,24 +860,18 @@ app.whenReady().then(async () => {
   });
 
   mainWindow = createWindow();
+  setupAppMenu();
   setupTray();
 
   const settings = loadSettings();
+  log('MAIN', settings.setup_complete ? 'Settings found — launching app' : 'First run — launching with placeholder settings');
+  await launchApp(settings);
 
-  if (!settings.setup_complete) {
-    log('MAIN', 'First run — showing setup wizard');
-    mainWindow.loadFile(path.join(__dirname, 'renderer', 'setup.html'));
-    mainWindow.once('ready-to-show', () => mainWindow.show());
-  } else {
-    log('MAIN', 'Settings found — launching app');
-    await launchApp(settings);
-  }
-
-  // Minimize to tray on close instead of quitting
+  // Red close button should fully quit app and child services.
   mainWindow.on('close', e => {
-    if (!isQuitting && tray) {
+    if (!isQuitting) {
       e.preventDefault();
-      mainWindow.hide();
+      requestFullQuit();
     }
   });
 });

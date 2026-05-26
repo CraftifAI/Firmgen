@@ -45,7 +45,6 @@ import { useAppSelector, useAppDispatch, useCapsForToolUse } from "../../hooks";
 import { useAttachedFiles } from "./useCheckBoxes";
 import { toPascalCase } from "../../utils/toPascalCase";
 import { Coin } from "../../images";
-import { push } from "../../features/Pages/pagesSlice";
 
 export const ApplyPatchSwitch: React.FC = () => {
   const dispatch = useAppDispatch();
@@ -302,21 +301,12 @@ export const TitleGenerationSwitch: React.FC = () => {
 export const CapsSelect: React.FC<{ disabled?: boolean }> = ({ disabled }) => {
   const refs = useTourRefs();
   const caps = useCapsForToolUse();
-  const dispatch = useAppDispatch();
-
-  const handleAddNewModelClick = useCallback(() => {
-    dispatch(push({ name: "providers page" }));
-  }, [dispatch]);
 
   const onSelectChange = useCallback(
     (value: string) => {
-      if (value === "add-new-model") {
-        handleAddNewModelClick();
-        return;
-      }
       caps.setCapModel(value);
     },
-    [handleAddNewModelClick, caps],
+    [caps],
   );
 
   const optionsWithToolTips: SelectProps["options"] = useMemo(() => {
@@ -357,14 +347,7 @@ export const CapsSelect: React.FC<{ disabled?: boolean }> = ({ disabled }) => {
       };
     });
 
-    return [
-      ...modelOptions,
-      { type: "separator" },
-      {
-        value: "add-new-model",
-        textValue: "Add new model",
-      },
-    ];
+    return modelOptions;
   }, [caps.data, caps.usableModelsForPlan]);
 
   const allDisabled = caps.usableModelsForPlan.every((option) => {
@@ -390,7 +373,7 @@ export const CapsSelect: React.FC<{ disabled?: boolean }> = ({ disabled }) => {
             </Text>
           ) : (
             <Select
-              title="chat model"
+              title={disabled ? "Model selection is locked" : "chat model"}
               options={optionsWithToolTips}
               value={caps.currentModel}
               onChange={onSelectChange}
@@ -398,6 +381,7 @@ export const CapsSelect: React.FC<{ disabled?: boolean }> = ({ disabled }) => {
               triggerClassName={classNames(
                 craftifPanelBtn.selectTrigger,
                 craftifPanelBtn.selectTriggerActive,
+                disabled && styles.composerModelTriggerLocked,
               )}
             />
           )}

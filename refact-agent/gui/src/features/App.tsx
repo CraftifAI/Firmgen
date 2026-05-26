@@ -22,7 +22,7 @@ import { PersistGate } from "redux-persist/integration/react";
 import { Theme } from "../components/Theme";
 import { useEventBusForWeb } from "../hooks/useEventBusForWeb";
 import { Statistics } from "./Statistics";
-import { Welcome } from "../components/Tour";
+import { ContextPayloadSidebar } from "../components/ContextPayloadSidebar";
 import {
   push,
   popBackTo,
@@ -72,7 +72,7 @@ export const InnerApp: React.FC<AppProps> = ({ style }: AppProps) => {
     [pages],
   );
 
-  const { chatPageChange, setIsChatStreaming, setIsChatReady } =
+  const { chatPageChange, setIsChatStreaming, setIsChatReady, setupHost } =
     useEventsBusForIDE();
   const tourState = useAppSelector((state: RootState) => state.tour);
   const historyState = useAppSelector((state: RootState) => state.history);
@@ -93,9 +93,19 @@ export const InnerApp: React.FC<AppProps> = ({ style }: AppProps) => {
 
   const isLoggedIn =
     isPageInHistory("history") ||
-    isPageInHistory("welcome") ||
     isPageInHistory("chat") ||
     isPageInHistory("project sources");
+
+  useEffect(() => {
+    if (!sessionJwt) return;
+    if (config.apiKey === sessionJwt && config.addressURL) return;
+
+    setupHost({
+      type: "enterprise",
+      apiKey: sessionJwt,
+      endpointAddress: "http://127.0.0.1:8002",
+    });
+  }, [config.apiKey, config.addressURL, setupHost]);
 
   useEffect(() => {
     if (!sessionJwt) {
@@ -106,9 +116,7 @@ export const InnerApp: React.FC<AppProps> = ({ style }: AppProps) => {
     }
 
     if (config.apiKey && config.addressURL && !isLoggedIn) {
-      if (tourState.type === "in_progress" && tourState.step === 1) {
-        dispatch(push({ name: "welcome" }));
-      } else if (
+      if (
         Object.keys(historyState).length === 0 &&
         // TODO: rework when better router will be implemented
         maybeCurrentActiveGroup
@@ -164,10 +172,6 @@ export const InnerApp: React.FC<AppProps> = ({ style }: AppProps) => {
     }
   }, [pages, groupSelectionEnabled, dispatch]);
 
-  const startTour = () => {
-    dispatch(push({ name: "history" }));
-  };
-
   const goBack = () => {
     dispatch(pop());
   };
@@ -217,7 +221,6 @@ export const InnerApp: React.FC<AppProps> = ({ style }: AppProps) => {
         <UserSurvey />
         {page.name === "login page" && <LoginPage />}
         {activeTab && <Toolbar activeTab={activeTab} />}
-        {page.name === "welcome" && <Welcome onPressNext={startTour} />}
         {page.name === "tour end" && <TourEnd />}
         {page.name === "history" && groupSelectionEnabled && (
           <Sidebar
@@ -250,6 +253,26 @@ export const InnerApp: React.FC<AppProps> = ({ style }: AppProps) => {
             onCloseStatistic={goBack}
           />
         )}
+        {page.name === "context payload page" && (
+          <Flex
+            align="stretch"
+            justify="center"
+            style={{ width: "100%", flex: 1, minHeight: 0 }}
+          >
+            <ContextPayloadSidebar
+              variant="page"
+              onBackToChat={() => {
+                const hasChatPage = pages.some((p) => p.name === "chat");
+                if (hasChatPage) {
+                  dispatch(popBackTo({ name: "chat" }));
+                  return;
+                }
+                dispatch(popBackTo({ name: "history" }));
+                dispatch(push({ name: "chat" }));
+              }}
+            />
+          </Flex>
+        )} 
         {page.name === "integrations page" && (
           <Integrations
             backFromIntegrations={goBackFromIntegrations}
@@ -277,7 +300,7 @@ export const InnerApp: React.FC<AppProps> = ({ style }: AppProps) => {
         )}
         {page.name === "admin usage page" && <AdminUsagePage />}
       </PageWrapper>
-      {page.name !== "welcome" && <Tour page={pages[pages.length - 1].name} />}
+      <Tour page={pages[pages.length - 1].name} />
     </Flex>
   );
 };

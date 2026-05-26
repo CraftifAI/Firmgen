@@ -63,8 +63,12 @@ function getToolCallStage(functionName: string, args: string): PipelineStage {
 
   if (name === "esp32_device" && operation.includes("monitor"))
     return "MONITORING";
-  if (name === "esp32_device" &&
-    (operation.includes("flash") || operation.includes("erase")))
+  if (
+    name === "esp32_device" &&
+    (operation.includes("detect") ||
+      operation.includes("flash") ||
+      operation.includes("erase"))
+  )
     return "FLASH";
   if (name === "esp32_build" &&
     (operation.includes("build") || operation.includes("clean") || operation.includes("reconfigure")))

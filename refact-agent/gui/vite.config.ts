@@ -64,12 +64,12 @@ function makeConfig(library: "browser" | "node") {
         proxy: {
           "/v1": process.env.REFACT_LSP_URL ?? "http://127.0.0.1:8001",
           "/auth": {
-            target: "https://api.intelligentedgesystems.com",
+            target: "https://api.craftifai.com",
             changeOrigin: true,
             secure: false,
           },
           "/usage": {
-            target: "https://api.intelligentedgesystems.com",
+            target: "https://api.craftifai.com",
             changeOrigin: true,
             secure: false,
           },

@@ -422,15 +422,23 @@ pub async fn get_config_dirs(
 
 pub fn split_path_into_project_and_integration(cfg_path: &PathBuf) -> Result<(String, String), String> {
     let path_str = cfg_path.to_string_lossy();
+    // Per-project config: <project>/.refact/integrations.d/<name>.yaml
     let re_per_project = Regex::new(r"^(.*)[\\/]\.refact[\\/](integrations\.d)[\\/](.+)\.yaml$").unwrap();
-    let re_global = Regex::new(r"^(.*)[\\/]\.config[\\/](refact[\\/](integrations\.d)[\\/](.+)\.yaml$)").unwrap();
+    // Global config — Linux/Mac: ~/.config/refact/integrations.d/<name>.yaml
+    let re_global_unix = Regex::new(r"^(.*)[\\/]\.config[\\/](refact[\\/](integrations\.d)[\\/](.+)\.yaml$)").unwrap();
+    // Global config — Windows: %APPDATA%\refact\integrations.d\<name>.yaml
+    // (AppData\Roaming\refact\... — no .config segment on Windows)
+    let re_global_win = Regex::new(r"^(.*)[\\/]AppData[\\/]Roaming[\\/]refact[\\/]integrations\.d[\\/](.+)\.yaml$").unwrap();
 
     if let Some(caps) = re_per_project.captures(&path_str) {
         let project_path = caps.get(1).map_or(String::new(), |m| m.as_str().to_string());
         let integr_name = caps.get(3).map_or(String::new(), |m| m.as_str().to_string());
         Ok((integr_name, project_path))
-    } else if let Some(caps) = re_global.captures(&path_str) {
+    } else if let Some(caps) = re_global_unix.captures(&path_str) {
         let integr_name = caps.get(4).map_or(String::new(), |m| m.as_str().to_string());
+        Ok((integr_name, String::new()))
+    } else if let Some(caps) = re_global_win.captures(&path_str) {
+        let integr_name = caps.get(2).map_or(String::new(), |m| m.as_str().to_string());
         Ok((integr_name, String::new()))
     } else {
         Err(format!("invalid path: {}", cfg_path.display()))

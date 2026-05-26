@@ -40,7 +40,7 @@ export const PageWrapper: React.FC<PageWrapperProps> = ({
       flexGrow="1"
       pt="1px"
       pb="1"
-      px={xPadding}
+      px="5px"
       className={classNames(styles.PageWrapper, className)}
       style={style}
     >

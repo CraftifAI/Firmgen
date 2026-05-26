@@ -68,10 +68,14 @@ const _MarkdownCodeBlock: React.FC<MarkdownCodeBlockProps> = ({
           PreTag={(props) => (
             <PreTag
               {...props}
-              className={classNames({
-                [styles.pre_width_max_content]: preOptions.widthMaxContent,
-                [styles.code_no_margin]: preOptions.noMargin,
-              })}
+              className={classNames(
+                props.className,
+                styles.markdown_code_pre,
+                {
+                  [styles.pre_width_max_content]: preOptions.widthMaxContent,
+                  [styles.code_no_margin]: preOptions.noMargin,
+                },
+              )}
               {...preTagProps}
             />
           )}

@@ -13,7 +13,8 @@ use super::output_protocol::ToolOutput;
 use super::global_state::get_config;
 use super::idf_command::IdfCommand;
 use super::board_definition::BoardDefinition;
-use super::global_state::{get_state, get_state_mut};
+use super::global_state::{get_state, get_state_mut, board_definition_url, resolve_device_port};
+use super::device_port_store::PortResolutionPolicy;
 
 pub struct ESP32ConfigTool {
     pub config_path: String,
@@ -1018,16 +1019,7 @@ impl ESP32ConfigTool {
             .map(|s| std::path::PathBuf::from(s))
             .unwrap_or_else(|| std::path::PathBuf::from("."));
 
-        let port = if let Some(p) = args.get("port").and_then(|v| v.as_str()) {
-            p.to_string()
-        } else {
-            let state = get_state().await;
-            if let Some(active) = &state.session.active_device {
-                active.port.clone()
-            } else {
-                config.default_serial_port.clone()
-            }
-        };
+        let port = resolve_device_port(config, args, PortResolutionPolicy::PreferKnown).await?;
 
         // Step 1: Get device info
         let device_info = self.get_device_info(config, &port).await?;
@@ -1323,10 +1315,7 @@ impl ESP32ConfigTool {
         let state = get_state().await;
         let cache = &state.cache;
 
-        // API URL for board definitions
-        let api_url = std::env::var("REFACT_ESP32_CONFIG_URL")
-            .unwrap_or_else(|_| "http://localhost:8002".to_string());
-        let board_url = format!("{}/v1/boards/{}", api_url, board_id);
+        let board_url = board_definition_url(board_id);
 
         cache.get_board_definition(board_id, async {
             let client = reqwest::Client::builder()

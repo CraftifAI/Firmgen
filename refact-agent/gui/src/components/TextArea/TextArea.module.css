@@ -2,9 +2,9 @@
   border: none;
   box-shadow: none;
   outline: none;
-  /* Override Radix size-1 min-height; single-line default, grow to ~3 lines */
+  /* Override Radix size-1 min-height; single-line default, grow up to maxVisibleLines (JS) */
   min-height: 28px !important;
-  max-height: 72px;
+  max-height: min(50vh, 360px);
 }
 
 .textarea :global(.rt-TextAreaInput) {

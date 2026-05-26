@@ -1,0 +1,174 @@
+{
+  "schema_version": "1.1",
+  "board_id": "esp32-c6-devkitc-1",
+  "board_version": "1.0.0",
+  "name": "ESP32-C6-DevKitC-1",
+  "variant": "WROOM-1",
+  "description": "Espressif ESP32-C6-DevKitC-1 (ESP32-C6-WROOM-1, 8MB flash, no PSRAM). RISC-V single-core with Wi-Fi 6, BLE 5.3, and 802.15.4 (Thread/Zigbee).",
+
+  "chip": {
+    "type": "esp32c6",
+    "min_revision": 0
+  },
+
+  "identification": {
+    "chip_type": "esp32c6",
+    "flash_size_range": ["8MB"],
+    "psram_present": false,
+    "psram_size": null,
+    "flash_manufacturer_ids": [],
+    "flash_device_ids": []
+  },
+
+  "hardware": {
+    "flash": {
+      "size": "8MB",
+      "size_config": "CONFIG_ESPTOOLPY_FLASHSIZE_8MB",
+      "mode": "qio",
+      "mode_config": "CONFIG_ESPTOOLPY_FLASHMODE_QIO",
+      "freq": "80m",
+      "freq_config": "CONFIG_ESPTOOLPY_FLASHFREQ_80M",
+      "notes": "ESP32-C6-WROOM-1 supports QIO at 80MHz."
+    },
+    "psram": {
+      "enabled": false,
+      "size": "",
+      "type": "",
+      "mode": "",
+      "mode_config": null
+    },
+    "uart_console": {
+      "tx": 16,
+      "rx": 17,
+      "uart": "uart0",
+      "notes": "ESP32-C6 UART0 default pins."
+    },
+    "usb_jtag": {
+      "supported": true,
+      "d_minus": 12,
+      "d_plus": 13,
+      "notes": "Built-in USB Serial/JTAG controller."
+    }
+  },
+
+  "gpio": {
+    "led": {
+      "pin": 8,
+      "type": "ws2812",
+      "driver": "led_strip",
+      "notes": "On-board RGB LED on GPIO8 (DevKitC-1 schematic)."
+    },
+    "button": {
+      "pin": 9,
+      "type": "boot",
+      "pull": "up",
+      "notes": "BOOT button on GPIO9."
+    },
+
+    "safe_pins": [0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 14, 15, 18, 19, 20, 21, 22, 23],
+    "restricted_pins": [24, 25, 26, 27, 28, 29, 30],
+    "restricted_reasons": {
+      "24-30": "Connected to integrated SPI flash on ESP32-C6-WROOM-1; not usable as GPIO."
+    }
+  },
+
+  "pwm": {
+    "defaults": {
+      "pin": 8,
+      "timer": 0,
+      "channel": 0,
+      "freq_hz": 5000,
+      "duty_resolution": 13,
+      "notes": "Generic LEDC default; GPIO8 also drives the on-board RGB LED."
+    },
+    "alternate_pins": [0, 1, 2, 3, 4, 5, 6, 7, 10, 11, 14, 15, 18, 19, 20, 21, 22, 23]
+  },
+
+  "adc": {
+    "defaults": {
+      "pin": 0,
+      "channel": "ADC1_CH0",
+      "attenuation": "11dB",
+      "width": 12,
+      "notes": "ESP32-C6 ADC1_CH0 is GPIO0."
+    },
+    "adc1_pins": [0, 1, 2, 3, 4, 5, 6],
+    "adc2_pins": [],
+    "notes": "ESP32-C6 has only ADC1 (no ADC2)."
+  },
+
+  "wifi": {
+    "station": {
+      "sdkconfig": {
+        "CONFIG_ESP_WIFI_ENABLED": "y",
+        "CONFIG_ESP_WIFI_STA_ENABLE": "y",
+        "CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM": "10",
+        "CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM": "32",
+        "CONFIG_ESP_WIFI_TX_BUFFER_TYPE": "1",
+        "CONFIG_ESP_WIFI_DYNAMIC_TX_BUFFER_NUM": "32"
+      }
+    }
+  },
+
+  "config_presets": {
+    "default": {
+      "description": "Standard configuration for ESP32-C6-DevKitC-1",
+      "tags": ["standard", "general"],
+      "use_cases": ["general development", "prototyping"],
+      "sdkconfig": {
+        "CONFIG_IDF_TARGET": "esp32c6",
+        "CONFIG_ESPTOOLPY_FLASHSIZE_8MB": "y",
+        "CONFIG_ESPTOOLPY_FLASHMODE_QIO": "y",
+        "CONFIG_ESPTOOLPY_FLASHFREQ_80M": "y",
+        "CONFIG_SPIRAM": "n"
+      }
+    },
+    "wifi_station": {
+      "extends": "default",
+      "description": "WiFi 6 Station mode configuration",
+      "tags": ["wifi", "wifi6", "station"],
+      "use_cases": ["Wi-Fi 6 client applications"],
+      "sdkconfig": {
+        "CONFIG_ESP_WIFI_ENABLED": "y",
+        "CONFIG_ESP_WIFI_STA_ENABLE": "y"
+      }
+    },
+    "thread": {
+      "extends": "default",
+      "description": "OpenThread (802.15.4) end device",
+      "tags": ["thread", "ot", "matter"],
+      "use_cases": ["Thread mesh networking", "Matter over Thread"],
+      "sdkconfig": {
+        "CONFIG_OPENTHREAD_ENABLED": "y",
+        "CONFIG_IEEE802154_ENABLED": "y"
+      }
+    },
+    "zigbee": {
+      "extends": "default",
+      "description": "Zigbee end device",
+      "tags": ["zigbee", "802.15.4"],
+      "use_cases": ["Zigbee mesh networking"],
+      "sdkconfig": {
+        "CONFIG_IEEE802154_ENABLED": "y",
+        "CONFIG_ZB_ENABLED": "y"
+      }
+    }
+  },
+
+  "required_components": [],
+  "conflicting_components": [],
+  "recommended_components": ["led_strip", "esp-zboss-lib", "esp-zigbee-lib"],
+
+  "kb": {
+    "collection": "esp32-c6-devkitc-1",
+    "pinout_doc": "01_board_docs/pinout_reference.md",
+    "board_summary_doc": "01_board_docs/board_summary.md",
+    "gpio_table_doc": "01_board_docs/gpio_pinout_esp32c6.inc",
+    "kconfig_symbols": "04_kconfig_symbols/config_symbols.jsonl"
+  },
+
+  "documentation": {
+    "datasheet": "https://www.espressif.com/sites/default/files/documentation/esp32-c6_datasheet_en.pdf",
+    "modules_overview": "https://www.espressif.com/en/products/devkits/esp32-c6-devkitc-1"
+  }
+}

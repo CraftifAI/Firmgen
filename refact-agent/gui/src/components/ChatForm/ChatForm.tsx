@@ -10,6 +10,7 @@ import {
 } from "../Buttons";
 import { TextArea } from "../TextArea";
 import { IoIosSend } from "react-icons/io";
+import { IoStop } from "react-icons/io5";
 import { Form } from "./Form";
 import {
   useOnPressedEnter,
@@ -102,13 +103,13 @@ export const ChatForm: React.FC<ChatFormProps> = ({
   const pauseReasonsWithPause = useAppSelector(getPauseReasonsWithPauseStatus);
   const [helpInfo, setHelpInfo] = React.useState<React.ReactNode | null>(null);
   const isOnline = useIsOnline();
-  const { retry } = useSendChatRequest();
+  const { retry, abort } = useSendChatRequest();
 
   const threadToolUse = useAppSelector(selectThreadToolUse);
   const messages = useAppSelector(selectMessages);
   const lastSentCompression = useAppSelector(selectLastSentCompression);
-  const { compressChat, compressChatRequest, isCompressing } =
-    useCompressChat();
+  // const { compressChat, compressChatRequest, isCompressing } =
+  //   useCompressChat();
   const autoFocus = useAutoFocusOnce();
   const attachedFiles = useAttachedFiles();
   const shouldShowBalanceLow = useAppSelector(showBalanceLowCallout);
@@ -145,7 +146,7 @@ export const ChatForm: React.FC<ChatFormProps> = ({
     return isWaiting || isStreaming || !isOnline;
   }, [allDisabled, messages.length, isWaiting, isStreaming, isOnline]);
 
-  const isModelSelectVisible = useMemo(() => messages.length < 1, [messages]);
+  // const isModelSelectVisible = useMemo(() => messages.length < 1, [messages]);
 
   const { processAndInsertImages } = useAttachedImages();
   const handlePastingFile = useCallback(
@@ -176,6 +177,15 @@ export const ChatForm: React.FC<ChatFormProps> = ({
 
   const [sendTelemetryEvent] =
     telemetryApi.useLazySendTelemetryChatEventQuery();
+
+  const handleManualStopStreamingClick = useCallback(() => {
+    abort();
+    void sendTelemetryEvent({
+      scope: `stopStreaming`,
+      success: true,
+      error_message: "",
+    });
+  }, [abort, sendTelemetryEvent]);
 
   const [value, setValue, isSendImmediately, setIsSendImmediately] =
     useInputValue(() => unCheckAll());
@@ -451,23 +461,40 @@ export const ChatForm: React.FC<ChatFormProps> = ({
               />
             </Flex>
             <div className={styles.composerPromptSend}>
-              <button
-                type="submit"
-                disabled={disableSend}
-                title="Send message"
-                aria-label="Send message"
-                className={classNames(
-                  craftifPanelBtn.root,
-                  craftifPanelBtn.active,
-                  styles.composerPromptSendButton,
-                )}
-              >
-                <IoIosSend size={15} aria-hidden />
-              </button>
+              {(isWaiting || isStreaming) && !pauseReasonsWithPause.pause ? (
+                <button
+                  type="button"
+                  title="Stop streaming"
+                  aria-label="Stop streaming"
+                  onClick={handleManualStopStreamingClick}
+                  className={classNames(
+                    craftifPanelBtn.root,
+                    craftifPanelBtn.active,
+                    styles.composerPromptSendButton,
+                  )}
+                >
+                  <IoStop size={15} aria-hidden />
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={disableSend}
+                  title="Send message"
+                  aria-label="Send message"
+                  className={classNames(
+                    craftifPanelBtn.root,
+                    craftifPanelBtn.active,
+                    styles.composerPromptSendButton,
+                  )}
+                >
+                  <IoIosSend size={15} aria-hidden />
+                </button>
+              )}
             </div>
           </Flex>
           <Flex className={styles.composerToolbar} gap="1" wrap="wrap" py="1" px="2">
-            {isModelSelectVisible && <CapsSelect />}
+            {/* {isModelSelectVisible && <CapsSelect />} */}
+            <CapsSelect disabled={messages.length >= 1}/>
 
             <Flex className={styles.composerActions} justify="end" flexGrow="1" wrap="wrap" gap="2">
               <input
@@ -478,12 +505,12 @@ export const ChatForm: React.FC<ChatFormProps> = ({
                 onChange={handleFileChange}
               />
               {/* <ThinkingButton /> */}
-              {shouldAgentCapabilitiesBeShown && <AgentCapabilities inline />}
+              {/* {shouldAgentCapabilitiesBeShown && <AgentCapabilities inline />} */}
               <TokensPreview
                 currentMessageQuery={attachedFiles.addFilesToInput(value)}
               />
               <Flex className={styles.composerIconRow} gap="2" align="center" justify="center">
-                <IconButton
+                {/* <IconButton
                   size="1"
                   variant="ghost"
                   color={
@@ -505,8 +532,8 @@ export const ChatForm: React.FC<ChatFormProps> = ({
                   loading={compressChatRequest.isLoading || isCompressing}
                 >
                   <ArchiveIcon />
-                </IconButton>
-                {toolUse === "agent" && (
+                </IconButton> */}
+                {/* {toolUse === "agent" && (
                   <AgentIntegrationsButton
                     title="Set up Agent Integrations"
                     size="1"
@@ -522,7 +549,7 @@ export const ChatForm: React.FC<ChatFormProps> = ({
                     size="1"
                     onClick={onClose}
                   />
-                )}
+                )} */}
                 {config.features?.images !== false &&
                   isMultimodalitySupportedForCurrentModel && (
                     <AttachImagesButton />

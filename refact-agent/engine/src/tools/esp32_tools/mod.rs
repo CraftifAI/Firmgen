@@ -8,6 +8,7 @@ pub mod cache;
 pub mod error_parser;
 pub mod idf_command;
 pub mod global_state;
+pub mod device_port_store;
 
 // Path resolution helpers (shared by HTTP routes and esp32_project tool)
 pub mod esp32_path_resolve;

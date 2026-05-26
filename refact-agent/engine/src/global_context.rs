@@ -451,6 +451,6 @@ pub async fn create_global_context(
         workflow_engine: create_workflow_engine(),
     };
     let gcx = Arc::new(ARwLock::new(cx));
-    crate::files_in_workspace::watcher_init(gcx.clone()).await;
+    tokio::spawn(crate::files_in_workspace::watcher_init(gcx.clone()));
     (gcx, ask_shutdown_receiver, cmdline)
 }

@@ -28,7 +28,7 @@ try {
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   const craftifApiBase =
-    env.VITE_CRAFTIF_API_BASE || "https://api.intelligentedgesystems.com";
+    env.VITE_CRAFTIF_API_BASE || "https://api.craftifai.com";
   const lspHttpUrl =
     env.VITE_REFACT_LSP_URL || "http://127.0.0.1:8486";
   const uploadApiUrl =

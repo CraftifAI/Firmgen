@@ -63,7 +63,7 @@
   padding: var(--space-3) var(--space-4) var(--space-2);
   flex-shrink: 0;
   display: flex;
-  width: 95%;
+  width: 100%;
   justify-content: stretch;
 }
 
@@ -99,7 +99,7 @@
 .newChatButtonContainer {
   padding: 0 var(--space-4) var(--space-3);
   /* border-bottom: 1px solid var(--sidebar-border);   */
-  width: 95%;
+  width: 100%;
   display: flex;
   justify-content: stretch;
 }
@@ -222,7 +222,7 @@
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 6px;
+  /* gap: 6px; */
 }
 
 .chatItem {
@@ -231,10 +231,9 @@
   gap: 4px;
   width: 95%;
   padding: 4px 12px;
-  border-radius: 16px;
+  border-radius: 10px;
   cursor: pointer;
-  border: 1px solid rgb(255 255 255 / 0.11);
-  background: rgba(14, 142, 197, 0.03);
+  background: transparent;
   transition:
     background 0.15s ease,
     border-color 0.15s ease,

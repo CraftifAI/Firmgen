@@ -3,9 +3,9 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "refact-tui"
-version = "0.1.0"
-description = "Terminal UI dashboard for Refact Agent"
+name = "craftifai-tui"
+version = "0.2.0"
+description = "Terminal UI dashboard for CraftifAI / Refact Agent"
 requires-python = ">=3.9"
 dependencies = [
     "textual>=1.0.0",
@@ -17,6 +17,7 @@ dependencies = [
 
 [project.scripts]
 refact-tui = "refact_tui.app:main"
+craftifai-tui = "refact_tui.app:main"
 
 [tool.setuptools.packages.find]
 include = ["refact_tui*"]

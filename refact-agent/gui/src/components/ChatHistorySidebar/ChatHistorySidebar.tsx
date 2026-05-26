@@ -36,6 +36,7 @@ import {
   setChatProjectById,
   type ChatHistoryItem,
 } from "../../features/History/historySlice";
+import { chatToHtml } from "../../utils/chatExportHtml";
 import {
   restoreChat,
   selectChatId,
@@ -158,17 +159,12 @@ export const ChatHistorySidebar: React.FC = () => {
   );
 
   const handleExportChat = useCallback((item: ChatHistoryItem) => {
-    const payload = {
-      ...item,
-      exportedAt: new Date().toISOString(),
-    };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], {
-      type: "application/json",
-    });
+    const html = chatToHtml(item);
+    const blob = new Blob([html], { type: "text/html" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `chat-${item.id}.json`;
+    a.download = `chat-${item.id}.html`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -419,7 +415,7 @@ export const ChatHistorySidebar: React.FC = () => {
       } else if (to === "fim") {
         dispatch(push({ name: "fill in the middle debug page" }));
       } else if (to === "stats") {
-        dispatch(push({ name: "statistics page" }));
+        dispatch(push({ name: "context payload page" }));
       } else if (to === "integrations") {
         dispatch(push({ name: "integrations page" }));
       } else if (to === "providers") {

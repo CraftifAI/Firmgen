@@ -121,6 +121,7 @@ async fn main() {
     tokio::fs::create_dir_all(&config_dir).await.expect("failed to create cache dir");
     let (gcx, ask_shutdown_receiver, cmdline) = global_context::create_global_context(cache_dir.clone(), config_dir.clone()).await;
     progressbar::init_progress_persistence(cache_dir.clone()).await;
+    crate::tools::esp32_tools::device_port_store::init_device_port_persistence(cache_dir.clone()).await;
     let mut writer_is_stderr = false;
     let (logs_writer, _guard) = if cmdline.logs_stderr {
         writer_is_stderr = true;
@@ -310,9 +311,7 @@ async fn main() {
         // Pre-fetch board definition to cache
         let state = global_state::get_state().await;
         let cache = &state.cache;
-        let api_url = std::env::var("REFACT_ESP32_CONFIG_URL")
-            .unwrap_or_else(|_| "http://localhost:8002".to_string());
-        let board_url = format!("{}/v1/boards/{}", api_url, cmdline.board_definition);
+        let board_url = global_state::board_definition_url(&cmdline.board_definition);
         
         match cache.get_board_definition(&cmdline.board_definition, async {
             let response = reqwest::get(&board_url)

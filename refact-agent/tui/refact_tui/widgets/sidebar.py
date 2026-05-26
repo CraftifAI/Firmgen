@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import platform
 from typing import Optional, List, Dict, Any
 
 from textual.app import ComposeResult
@@ -13,10 +14,13 @@ from textual.reactive import reactive
 from rich.text import Text
 
 
+IS_WIN = platform.system() == "Windows"
+
 SKIP_DIRS = {
     "node_modules", "__pycache__", ".git", ".hg", ".svn", "target",
     "build", "dist", ".tox", ".venv", "venv", ".cache", ".mypy_cache",
     ".pytest_cache", ".eggs", "*.egg-info", ".idea", ".vscode",
+    ".vs", "Debug", "Release", "x64", "x86",
 }
 
 
@@ -32,7 +36,8 @@ class FileTreePanel(Widget):
         self.root_path = os.path.abspath(root_path)
 
     def compose(self) -> ComposeResult:
-        tree: Tree[str] = Tree(os.path.basename(self.root_path) or "/", id="file-tree")
+        label = os.path.basename(self.root_path) or (self.root_path if IS_WIN else "/")
+        tree: Tree[str] = Tree(label, id="file-tree")
         tree.root.data = self.root_path
         self._populate(tree.root, self.root_path, depth=0)
         tree.root.expand()
@@ -42,7 +47,7 @@ class FileTreePanel(Widget):
         if depth > 3:
             return
         try:
-            entries = sorted(os.listdir(path))
+            entries = sorted(os.listdir(path), key=str.lower)
         except (PermissionError, OSError):
             return
         dirs = [
@@ -59,16 +64,24 @@ class FileTreePanel(Widget):
 
         for d in dirs[:40]:
             full = os.path.join(path, d)
-            child = node.add(f"[bold]{d}/[/]", data=full)
+            child = node.add(f"[bold]📁 {d}/[/]", data=full)
             if depth < 1:
                 self._populate(child, full, depth + 1)
 
         for f in files[:40]:
-            node.add_leaf(f, data=os.path.join(path, f))
+            ext_icons = {
+                ".py": "🐍", ".rs": "🦀", ".js": "📜", ".ts": "📜",
+                ".c": "⚙", ".h": "⚙", ".cpp": "⚙", ".json": "📋",
+                ".yaml": "📋", ".yml": "📋", ".md": "📝", ".txt": "📝",
+                ".toml": "📋", ".cfg": "📋", ".ini": "📋",
+            }
+            _, ext = os.path.splitext(f)
+            icon = ext_icons.get(ext.lower(), "📄")
+            node.add_leaf(f"{icon} {f}", data=os.path.join(path, f))
 
-        remaining = len(dirs) - 40 + max(0, len(files) - 40)
+        remaining = max(0, len(dirs) - 40) + max(0, len(files) - 40)
         if remaining > 0:
-            node.add_leaf(f"[dim]... {remaining} more entries[/]")
+            node.add_leaf(f"[dim]… {remaining} more entries[/]")
 
 
 class ToolStatusPanel(Widget):
@@ -225,17 +238,17 @@ class Sidebar(Widget):
         yield VerticalScroll(
             Collapsible(
                 FileTreePanel(self.project_path, id="file-tree-panel"),
-                title="Files",
+                title="📁 Files",
                 collapsed=False,
             ),
             Collapsible(
                 ToolStatusPanel(id="tool-status-panel"),
-                title="Tools",
+                title="🔧 Tools",
                 collapsed=True,
             ),
             Collapsible(
                 WorkflowPanel(id="workflow-panel"),
-                title="Workflow",
+                title="⚡ Workflow",
                 collapsed=True,
             ),
             id="sidebar-scroll",

@@ -220,7 +220,7 @@ def get_openai_client(auth_key: str = None):
     if auth_key:
         return openai.AsyncOpenAI(
             api_key=auth_key,
-            base_url="https://api.intelligentedgesystems.com/v1/v1/",
+            base_url="https://api.craftifai.com/v1/",
             timeout=120.0,
             max_retries=3
         )
@@ -231,7 +231,7 @@ def get_openai_client(auth_key: str = None):
             raise ValueError("OPENAI_API_KEY environment variable not set")
         _client = openai.AsyncOpenAI(
             api_key=api_key,
-            base_url="https://api.intelligentedgesystems.com/v1/v1/",
+            base_url="https://api.craftifai.com/v1/",
             timeout=120.0,  # 120 second timeout for large batches
             max_retries=3  # Retry up to 3 times on transient errors
         )
@@ -261,6 +261,110 @@ async def set_jwt(req: SetJwtRequest):
     global ACTIVE_JWT_TOKEN
     ACTIVE_JWT_TOKEN = req.token
     return {"status": "ok"}
+
+
+# ── Board-definition context injection ────────────────────────────────────────
+# Loaded once when the user confirms board selection in the wizard. The
+# formatted text is prepended to the system message on every chat request so
+# the LLM has accurate GPIO/hardware knowledge from message 1.
+
+ACTIVE_BOARD_DEFINITION: dict = {}
+
+
+def _load_board_json(board_id: str) -> dict:
+    """Return the board definition dict from cache or local folder."""
+    cache_path = _refact_cache_dir() / "board_definitions" / f"{board_id}.json"
+    if cache_path.exists():
+        try:
+            with open(cache_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    local_path = Path("board_definitions") / f"{board_id}.json"
+    if local_path.exists():
+        with open(local_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    raise FileNotFoundError(f"Board definition not found for: {board_id}")
+
+
+def _format_board_context(board: dict) -> str:
+    """Format the board definition into a compact LLM-readable context block."""
+    gpio = board.get("gpio", {})
+    hw = board.get("hardware", {})
+    flash = hw.get("flash", {})
+    psram = hw.get("psram", {})
+    uart = hw.get("uart_console", {})
+    usb = hw.get("usb_jtag", {})
+    adc = board.get("adc", {})
+    led = gpio.get("led", {})
+    button = gpio.get("button", {})
+    presets = list(board.get("config_presets", {}).keys())
+
+    restricted_reasons = gpio.get("restricted_reasons", {})
+    restricted_str = "; ".join(
+        f"GPIO {k}: {v}" for k, v in restricted_reasons.items()
+    )
+
+    lines = [
+        "=== ACTIVE BOARD CONTEXT (injected at session start) ===",
+        f"Board   : {board.get('name', '?')} — variant {board.get('variant', '?')}",
+        f"Chip    : {board.get('chip', {}).get('type', '?')}",
+        f"Flash   : {flash.get('size', '?')}  mode={flash.get('mode', '?')}  freq={flash.get('freq', '?')}",
+        f"PSRAM   : {'enabled  size=' + psram.get('size', '?') + '  mode=' + psram.get('mode', '?') if psram.get('enabled') else 'none'}",
+        f"UART console : TX={uart.get('tx', '?')}  RX={uart.get('rx', '?')}",
+        f"USB JTAG     : D-={usb.get('d_minus', '?')}  D+={usb.get('d_plus', '?')}",
+        f"LED     : GPIO {led.get('pin', '?')}  driver={led.get('driver', '?')}  ({led.get('notes', '')})",
+        f"Button  : GPIO {button.get('pin', '?')}  ({button.get('notes', '')})",
+        f"Safe GPIO pins    : {gpio.get('safe_pins', [])}",
+        f"Restricted GPIO   : {gpio.get('restricted_pins', [])}",
+        f"Restricted reasons: {restricted_str}",
+        f"ADC1 pins : {adc.get('adc1_pins', [])}",
+        f"ADC2 pins : {adc.get('adc2_pins', [])}  (WARNING: ADC2 conflicts with WiFi when active)",
+        f"Config presets available: {presets}",
+        "IMPORTANT: Always respect restricted GPIO pins in generated code. Never assign",
+        "user peripherals to restricted pins. Use safe_pins for general I/O.",
+        "=== END BOARD CONTEXT ===",
+    ]
+    return "\n".join(lines)
+
+
+class SetActiveBoardRequest(BaseModel):
+    board_id: str
+
+
+@app.post("/v1/set-active-board")
+async def set_active_board(req: SetActiveBoardRequest):
+    """Load the selected board definition and store it for LLM context injection."""
+    global ACTIVE_BOARD_DEFINITION
+    try:
+        board = _load_board_json(req.board_id)
+        ACTIVE_BOARD_DEFINITION = board
+        logger.info(f"Active board set to: {req.board_id} ({board.get('name', '?')})")
+        return {"status": "ok", "board_id": req.board_id, "name": board.get("name")}
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to load board: {e}")
+
+
+@app.get("/v1/active-board")
+async def get_active_board():
+    """Debug endpoint — returns the currently loaded board and the exact context
+    block that will be injected into every LLM system prompt."""
+    if not ACTIVE_BOARD_DEFINITION:
+        return {
+            "status": "not_set",
+            "message": "No board loaded. POST /v1/set-active-board first.",
+            "board": None,
+            "injected_context": None,
+        }
+    return {
+        "status": "ok",
+        "board_id": ACTIVE_BOARD_DEFINITION.get("board_id"),
+        "name": ACTIVE_BOARD_DEFINITION.get("name"),
+        "variant": ACTIVE_BOARD_DEFINITION.get("variant"),
+        "injected_context": _format_board_context(ACTIVE_BOARD_DEFINITION),
+    }
 
 
 @app.get("/v1/caps")
@@ -523,6 +627,255 @@ async def get_v1_esp32_config():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error reading ESP32 config: {str(e)}")
 
+def _user_board_dir() -> Path:
+    """Writable directory for user-created board definitions."""
+    d = _refact_cache_dir() / "board_definitions"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _builtin_board_ids() -> set:
+    """IDs of boards shipped with the app (read-only)."""
+    local_dir = Path("board_definitions")
+    if not local_dir.is_dir():
+        return set()
+    return {p.stem for p in local_dir.glob("*.json")}
+
+
+@app.get("/v1/boards")
+async def list_v1_boards():
+    """Return a list of all available board definitions with summary metadata.
+
+    Scans the local board_definitions folder first (built-in, read-only) then
+    the user cache directory (user-created, editable). Any board JSON dropped
+    in either location appears here automatically.
+    """
+    seen: dict[str, dict] = {}
+    builtin_ids: set[str] = set()
+
+    def _add(path: Path, is_builtin: bool) -> None:
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            board_id = data.get("board_id") or path.stem
+            if board_id not in seen:
+                hw = data.get("hardware", {})
+                flash = hw.get("flash", {})
+                psram = hw.get("psram", {})
+                seen[board_id] = {
+                    "board_id": board_id,
+                    "name": data.get("name", board_id),
+                    "variant": data.get("variant", ""),
+                    "description": data.get("description", ""),
+                    "chip": data.get("chip", {}).get("type", ""),
+                    "flash_size": flash.get("size", ""),
+                    "psram_size": psram.get("size", "") if psram.get("enabled") else "",
+                    "is_builtin": is_builtin,
+                }
+                if is_builtin:
+                    builtin_ids.add(board_id)
+        except Exception as e:
+            logger.warning(f"Skipping board file {path}: {e}")
+
+    local_dir = Path("board_definitions")
+    if local_dir.is_dir():
+        for p in sorted(local_dir.glob("*.json")):
+            _add(p, is_builtin=True)
+
+    cache_dir = _refact_cache_dir() / "board_definitions"
+    if cache_dir.is_dir():
+        for p in sorted(cache_dir.glob("*.json")):
+            _add(p, is_builtin=(p.stem in builtin_ids))
+
+    return {"boards": list(seen.values())}
+
+
+@app.post("/v1/boards")
+async def create_board(request: Request):
+    """Save a new board definition JSON to the user board directory.
+
+    Accepts the full board definition as a JSON body. The board_id field is
+    used as the filename. Returns 409 if a board with that ID already exists
+    in the built-in folder (user cannot overwrite built-in boards via this
+    endpoint — use PUT to update user-created boards).
+    """
+    try:
+        data = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+
+    board_id = data.get("board_id", "").strip()
+    if not board_id:
+        raise HTTPException(status_code=400, detail="board_id field is required")
+
+    builtin_path = Path("board_definitions") / f"{board_id}.json"
+    if builtin_path.exists():
+        raise HTTPException(
+            status_code=409,
+            detail=f"'{board_id}' is a built-in board and cannot be overwritten. Use a different board_id."
+        )
+
+    dest = _user_board_dir() / f"{board_id}.json"
+    if dest.exists():
+        raise HTTPException(
+            status_code=409,
+            detail=f"Board '{board_id}' already exists. Use PUT /v1/boards/{board_id} to update it."
+        )
+
+    with open(dest, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+    logger.info(f"Created user board: {board_id} → {dest}")
+    return {"status": "created", "board_id": board_id, "path": str(dest)}
+
+
+@app.put("/v1/boards/{board_id}")
+async def update_board(board_id: str, request: Request):
+    """Update an existing user-created board definition.
+
+    Built-in boards cannot be updated via this endpoint.
+    """
+    global ACTIVE_BOARD_DEFINITION
+    builtin_path = Path("board_definitions") / f"{board_id}.json"
+    if builtin_path.exists():
+        raise HTTPException(
+            status_code=403,
+            detail=f"'{board_id}' is a built-in board and cannot be modified."
+        )
+
+    dest = _user_board_dir() / f"{board_id}.json"
+    if not dest.exists():
+        raise HTTPException(status_code=404, detail=f"User board '{board_id}' not found.")
+
+    try:
+        data = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+
+    data["board_id"] = board_id
+    with open(dest, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+    logger.info(f"Updated user board: {board_id}")
+
+    if ACTIVE_BOARD_DEFINITION.get("board_id") == board_id:
+        ACTIVE_BOARD_DEFINITION = data
+        logger.info(f"Refreshed active board context after update: {board_id}")
+
+    return {"status": "updated", "board_id": board_id}
+
+
+@app.delete("/v1/boards/{board_id}")
+async def delete_board(board_id: str):
+    """Delete a user-created board definition.
+
+    Built-in boards cannot be deleted.
+    """
+    builtin_path = Path("board_definitions") / f"{board_id}.json"
+    if builtin_path.exists():
+        raise HTTPException(
+            status_code=403,
+            detail=f"'{board_id}' is a built-in board and cannot be deleted."
+        )
+
+    dest = _user_board_dir() / f"{board_id}.json"
+    if not dest.exists():
+        raise HTTPException(status_code=404, detail=f"User board '{board_id}' not found.")
+
+    dest.unlink()
+    logger.info(f"Deleted user board: {board_id}")
+    return {"status": "deleted", "board_id": board_id}
+
+
+# Board generation prompt — kept compact to save context tokens
+_BOARD_EXTRACT_SYSTEM = """You are a hardware documentation parser for ESP32 boards.
+Given the text extracted from a board datasheet or schematic, produce a JSON object
+matching this schema (all fields optional unless marked *required*):
+
+{
+  "board_id": "<slug, lowercase, hyphens only>",   // *required*
+  "name": "<human name>",                           // *required*
+  "variant": "<variant string>",
+  "description": "<one sentence>",
+  "chip": { "type": "<esp32|esp32s3|esp32s2|esp32c3|esp32c6>" },
+  "hardware": {
+    "flash": { "size": "<4MB|8MB|16MB|32MB>", "mode": "<qio|dio>", "freq": "<80m|40m>" },
+    "psram": { "enabled": true/false, "size": "<size>", "mode": "<quad|octal>" },
+    "uart_console": { "tx": <pin>, "rx": <pin> },
+    "usb_jtag": { "supported": true/false, "d_minus": <pin>, "d_plus": <pin> }
+  },
+  "gpio": {
+    "led": { "pin": <n>, "type": "<rgb|standard>", "driver": "<ws2812|gpio>" },
+    "button": { "pin": <n>, "pull": "<pullup|pulldown>" },
+    "safe_pins": [<list of safe GPIO numbers>],
+    "restricted_pins": [<list>],
+    "restricted_reasons": { "<pin>": "<reason>", ... }
+  },
+  "adc": { "adc1_pins": [<list>], "adc2_pins": [<list>] },
+  "config_presets": {
+    "default": { "description": "...", "sdkconfig": { "<KEY>": "<val>", ... } }
+  }
+}
+
+Return ONLY valid JSON. No markdown, no explanation. If you cannot determine a value,
+omit that field rather than guessing."""
+
+
+@app.post("/v1/boards/generate-from-pdf")
+async def generate_board_from_pdf(
+    file: UploadFile = File(...),
+    hints: str = "",
+):
+    """Upload a board datasheet PDF and extract a draft board definition JSON.
+
+    The draft is returned to the client for review — it is NOT saved automatically.
+    The client should POST the reviewed JSON to /v1/boards to persist it.
+    """
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+
+    try:
+        from file_parsers.pdf_parser import PdfParser
+        pdf_bytes = await file.read()
+        parser = PdfParser()
+        result = parser.parse(pdf_bytes, file.filename)
+        pdf_text = result["text"]
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"PDF parsing failed: {e}")
+
+    # Truncate to avoid exceeding model context (keep first ~12000 chars)
+    if len(pdf_text) > 12000:
+        pdf_text = pdf_text[:12000] + "\n...[truncated]"
+
+    user_message = f"Extract board definition from this datasheet text.\n"
+    if hints:
+        user_message += f"Additional hints: {hints}\n"
+    user_message += f"\n---\n{pdf_text}\n---"
+
+    global ACTIVE_JWT_TOKEN
+    auth_key = ACTIVE_JWT_TOKEN or os.environ.get("OPENAI_API_KEY")
+    if not auth_key:
+        raise HTTPException(status_code=401, detail="No API key available for LLM extraction.")
+
+    try:
+        client = openai.AsyncOpenAI(api_key=auth_key, base_url=CRAFTIF_API_BASE + "/")
+        response = await client.chat.completions.create(
+            model="gpt-5.2",
+            messages=[
+                {"role": "system", "content": _BOARD_EXTRACT_SYSTEM},
+                {"role": "user", "content": user_message},
+            ],
+            temperature=0.1,
+        )
+        raw = response.choices[0].message.content or ""
+        raw = raw.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
+        draft = json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=422, detail=f"LLM returned invalid JSON: {e}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"LLM extraction failed: {e}")
+
+    return {"status": "draft", "board": draft}
+
+
 @app.get("/v1/boards/{board_id}")
 async def get_v1_board_definition(board_id: str):
     """V1 board definition endpoint - returns JSON board definition"""
@@ -670,21 +1023,44 @@ async def upload_supported_formats():
 
 def _build_openai_messages(post: ChatContext) -> list:
     """Convert ChatContext messages to the OpenAI messages list format.
-    
+
     Passes messages through directly without truncation or splitting,
     as the upstream CraftifAI gateway now supports large payloads.
+
+    If a board definition has been set via /v1/set-active-board, its formatted
+    context block is appended to the first system message (or inserted as a new
+    system message before any user message) so the LLM is grounded in the
+    correct board knowledge from message 1.
     """
     openai_messages = []
 
     for msg in post.messages:
         content = msg.content
-
         m: Dict[str, Any] = {"role": msg.role, "content": content}
         if msg.tool_calls:
             m["tool_calls"] = msg.tool_calls
         if msg.tool_call_id:
             m["tool_call_id"] = msg.tool_call_id
         openai_messages.append(m)
+
+    # Inject board context into system prompt when a board is active
+    if ACTIVE_BOARD_DEFINITION:
+        board_ctx = _format_board_context(ACTIVE_BOARD_DEFINITION)
+        injected = False
+        for m in openai_messages:
+            if m["role"] == "system":
+                m["content"] = m["content"] + "\n\n" + board_ctx
+                injected = True
+                break
+        if not injected:
+            # No system message yet — insert one before the first user message
+            openai_messages.insert(0, {"role": "system", "content": board_ctx})
+        logger.info(
+            f"[board-ctx] injected={injected} board={ACTIVE_BOARD_DEFINITION.get('board_id')} "
+            f"messages_total={len(openai_messages)}"
+        )
+    else:
+        logger.warning("[board-ctx] ACTIVE_BOARD_DEFINITION is empty — no board context injected")
 
     return openai_messages
 
@@ -745,6 +1121,9 @@ def _responses_to_chat_completion(resp_obj: Any, model: str, request_id: str) ->
     }
 
 
+CRAFTIF_API_BASE = "https://api.craftifai.com/v1"
+
+
 @app.post("/v1/chat/completions")
 async def chat_completions(post: ChatContext, request: Request):
     created_ts = time.time()
@@ -775,7 +1154,7 @@ async def chat_completions(post: ChatContext, request: Request):
 
             client = openai.AsyncOpenAI(
                 api_key=auth_key,
-                base_url="https://api.intelligentedgesystems.com/v1/v1/"
+                base_url=CRAFTIF_API_BASE + "/"
             )
 
             # ------------------------------------------------------------------
@@ -962,12 +1341,6 @@ async def chat_completions(post: ChatContext, request: Request):
             # ------------------------------------------------------------------
             # Branch B: standard chat/completions models (gpt-5.1, gpt-5.2, etc.)
             # ------------------------------------------------------------------
-            # NOTE: The CraftifAI gateway does NOT support SSE streaming.
-            # We always call upstream with stream=False to get a complete JSON
-            # response, then simulate SSE chunks locally if the caller wants
-            # streaming. This prevents the OpenAI SDK from trying to parse
-            # a non-SSE response as an SSE stream (which yields 0 chunks).
-            # ------------------------------------------------------------------
             else:
                 openai_params: Dict[str, Any] = {
                     "model": model,
@@ -975,7 +1348,7 @@ async def chat_completions(post: ChatContext, request: Request):
                     "temperature": clamp(0, 2, post.temperature),
                     "top_p": clamp(0.0, 1.0, post.top_p),
                     "n": post.n,
-                    "stream": False,  # Always non-streaming to CraftifAI gateway
+                    "stream": post.stream,
                 }
 
                 if post.tools:
@@ -985,106 +1358,36 @@ async def chat_completions(post: ChatContext, request: Request):
                 if post.stop:
                     openai_params["stop"] = post.stop if isinstance(post.stop, list) else [post.stop]
 
-                response = await client.chat.completions.create(**openai_params)
-                response_dict = response.model_dump()
-
-                logger.info(f"{request_id} upstream response received, model={response_dict.get('model','?')}")
-
                 if post.stream:
-                    # Simulate SSE streaming from the complete response
-                    # First chunk: role assignment
-                    for choice in response_dict.get("choices", []):
-                        msg = choice.get("message", {})
-                        content = msg.get("content") or ""
-                        tool_calls = msg.get("tool_calls")
-                        finish_reason = choice.get("finish_reason", "stop")
-
-                        # Send role chunk
-                        role_chunk = {
-                            "id": response_dict.get("id", request_id),
-                            "object": "chat.completion.chunk",
-                            "created": response_dict.get("created", int(time.time())),
-                            "model": model,
-                            "choices": [{"index": choice.get("index", 0),
-                                         "delta": {"role": "assistant", "content": ""},
-                                         "finish_reason": None}],
-                        }
-                        yield f"data: {json.dumps(role_chunk)}\n\n"
-
-                        # Stream content in small chunks to simulate real-time
-                        if content:
-                            chunk_size = 20  # characters per SSE event
-                            for i in range(0, len(content), chunk_size):
-                                text_piece = content[i:i + chunk_size]
-                                chunk = {
-                                    "id": response_dict.get("id", request_id),
-                                    "object": "chat.completion.chunk",
-                                    "created": response_dict.get("created", int(time.time())),
-                                    "model": model,
-                                    "choices": [{"index": choice.get("index", 0),
-                                                 "delta": {"content": text_piece},
-                                                 "finish_reason": None}],
-                                }
-                                yield f"data: {json.dumps(chunk)}\n\n"
-
-                        # Stream tool calls if present
-                        if tool_calls:
-                            for tc_idx, tc in enumerate(tool_calls):
-                                # Send tool call header
-                                tc_chunk = {
-                                    "id": response_dict.get("id", request_id),
-                                    "object": "chat.completion.chunk",
-                                    "created": response_dict.get("created", int(time.time())),
-                                    "model": model,
-                                    "choices": [{"index": choice.get("index", 0),
-                                                 "delta": {
-                                                     "tool_calls": [{
-                                                         "index": tc_idx,
-                                                         "id": tc.get("id", ""),
-                                                         "type": "function",
-                                                         "function": {
-                                                             "name": tc.get("function", {}).get("name", ""),
-                                                             "arguments": "",
-                                                         },
-                                                     }],
-                                                 },
-                                                 "finish_reason": None}],
-                                }
-                                yield f"data: {json.dumps(tc_chunk)}\n\n"
-                                # Send tool call arguments
-                                args = tc.get("function", {}).get("arguments", "")
-                                if args:
-                                    args_chunk = {
-                                        "id": response_dict.get("id", request_id),
-                                        "object": "chat.completion.chunk",
-                                        "created": response_dict.get("created", int(time.time())),
-                                        "model": model,
-                                        "choices": [{"index": choice.get("index", 0),
-                                                     "delta": {
-                                                         "tool_calls": [{
-                                                             "index": tc_idx,
-                                                             "function": {"arguments": args},
-                                                         }],
-                                                     },
-                                                     "finish_reason": None}],
-                                    }
-                                    yield f"data: {json.dumps(args_chunk)}\n\n"
-
-                        # Send finish chunk
-                        done_chunk = {
-                            "id": response_dict.get("id", request_id),
-                            "object": "chat.completion.chunk",
-                            "created": response_dict.get("created", int(time.time())),
-                            "model": model,
-                            "choices": [{"index": choice.get("index", 0),
-                                         "delta": {},
-                                         "finish_reason": finish_reason}],
-                        }
-                        yield f"data: {json.dumps(done_chunk)}\n\n"
-
+                    # CraftifAI gateway streaming is unreliable with OpenAI SDK 2.x;
+                    # fetch the full completion and emit a single SSE chunk.
+                    stream_params = dict(openai_params)
+                    stream_params["stream"] = False
+                    response = await client.chat.completions.create(**stream_params)
+                    data = response.model_dump()
+                    choice = (data.get("choices") or [{}])[0]
+                    message = choice.get("message") or {}
+                    delta: Dict[str, Any] = {"role": message.get("role", "assistant")}
+                    if message.get("content"):
+                        delta["content"] = message["content"]
+                    if message.get("tool_calls"):
+                        delta["tool_calls"] = message["tool_calls"]
+                    chunk = {
+                        "id": data.get("id", request_id),
+                        "object": "chat.completion.chunk",
+                        "created": data.get("created", int(time.time())),
+                        "model": data.get("model", model),
+                        "choices": [{
+                            "index": 0,
+                            "delta": delta,
+                            "finish_reason": choice.get("finish_reason"),
+                        }],
+                    }
+                    yield f"data: {json.dumps(chunk)}\n\n"
                     yield "data: [DONE]\n\n"
                 else:
-                    yield json.dumps(response_dict)
+                    response = await client.chat.completions.create(**openai_params)
+                    yield json.dumps(response.model_dump())
 
             logger.info(f"{request_id} finished in {(time.time() - created_ts) * 1000:.1f}ms")
 

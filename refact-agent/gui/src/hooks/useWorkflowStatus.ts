@@ -46,7 +46,11 @@ function toolNameToStage(toolName: string, args?: string): PipelineStage {
         return 'MONITORING';
     }
     if (combined.includes('esp32_device')) {
-        if (argStr.includes('flash') || argStr.includes('erase')) {
+        if (
+            argStr.includes('detect') ||
+            argStr.includes('flash') ||
+            argStr.includes('erase')
+        ) {
             return 'FLASH';
         }
     }

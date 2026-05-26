@@ -4,9 +4,9 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('craftifai', {
   // Settings
-  getSettings:    ()       => ipcRenderer.invoke('get-settings'),
-  saveAndLaunch:  (data)   => ipcRenderer.invoke('save-and-launch', data),
-  resetSettings:  ()       => ipcRenderer.invoke('reset-settings'),
+  getSettings:         ()       => ipcRenderer.invoke('get-settings'),
+  saveWizardSettings:  (data)   => ipcRenderer.invoke('save-wizard-settings', data),
+  resetSettings:       ()       => ipcRenderer.invoke('reset-settings'),
 
   // File dialogs
   browseFolder:   ()       => ipcRenderer.invoke('browse-folder'),

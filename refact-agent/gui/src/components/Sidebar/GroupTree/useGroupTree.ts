@@ -412,9 +412,17 @@ export function useGroupTree() {
     actions.forEach((action) => dispatch(action));
   }, [dispatch]);
   
-  // Handler to set workspace folder on the agent
-  const handleSetWorkspaceFolder = useCallback(async (folderPath: string) => {
-    if (!isEmbedded) return;
+  // Handler to set workspace folder on the agent.
+  // Returns true on success. When options.quiet is true, failures do not dispatch
+  // global error (Welcome wizard shows inline error instead).
+  const handleSetWorkspaceFolder = useCallback(
+    async (
+      folderPath: string,
+      options?: { quiet?: boolean },
+    ): Promise<boolean> => {
+    if (!isEmbedded) return true;
+    if (!folderPath.trim()) return true;
+    const quiet = options?.quiet === true;
     
     try {
       const port = config.lspPort || 8001;
@@ -425,22 +433,45 @@ export function useGroupTree() {
       let folderUrl: string;
       if (folderPath.startsWith("file://")) {
         folderUrl = folderPath;
+      } else if (/^[A-Za-z]:[\\/]/.test(folderPath)) {
+        // Windows absolute path: C:\foo -> file:///C:/foo
+        folderUrl = `file:///${folderPath.replace(/\\/g, "/")}`;
       } else {
-        // Ensure path starts with / and convert to file:// URL
         const normalizedPath = folderPath.startsWith("/") ? folderPath : `/${folderPath}`;
         folderUrl = `file://${normalizedPath}`;
       }
       
-      const response = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {}),
-        },
-        body: JSON.stringify({
-          project_roots: [folderUrl],
-        }),
-      });
+      const doFetch = () =>
+        fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {}),
+          },
+          body: JSON.stringify({
+            project_roots: [folderUrl],
+          }),
+        });
+
+      // LSP can be briefly unavailable right after we restart it (e.g. when the
+      // user changes board/project dir in the Welcome page). Retry a few times
+      // to avoid showing a spurious error toast.
+      let response: Response | null = null;
+      let lastErr: unknown = null;
+      const maxAttempts = 10;
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+          response = await doFetch();
+          break;
+        } catch (e) {
+          lastErr = e;
+          const delayMs = Math.min(3000, 250 * attempt);
+          await new Promise((r) => setTimeout(r, delayMs));
+        }
+      }
+      if (!response) {
+        throw lastErr instanceof Error ? lastErr : new Error("Failed to fetch");
+      }
       
       if (!response.ok) {
         throw new Error(`Failed to set workspace folder: ${response.statusText}`);
@@ -451,12 +482,14 @@ export function useGroupTree() {
       
       // Clear any previous errors
       dispatch(clearError());
+      return true;
     } catch (error) {
       console.error("Error setting workspace folder:", error);
       const errorMessage = error instanceof Error ? error.message : String(error);
-      if (errorMessage) {
+      if (errorMessage && !quiet) {
         dispatch(setError(`Failed to set workspace folder: ${errorMessage}`));
       }
+      return false;
     }
   }, [isEmbedded, config, dispatch]);
   

@@ -326,13 +326,22 @@ pub async fn ast_indexer_start(
     gcx: Arc<ARwLock<GlobalContext>>,
 ) -> Vec<JoinHandle<()>>
 {
-    let indexer_handle = tokio::spawn(
-        ast_indexer_thread(
+    // Spawn multiple concurrent workers so that while one worker is waiting on file I/O
+    // (async await), others can be parsing.  Workers share the same ast_todo queue via
+    // Arc<AMutex<AstIndexService>>, so they naturally divide the work without duplication.
+    // Cap at 4 workers: beyond that the SQLite/heed writes become the bottleneck, and
+    // the "AST COMPLETE" log line would be printed once per worker (harmless, informational).
+    let parallelism = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(2);
+    let worker_count = (parallelism / 2).max(1).min(4);
+
+    (0..worker_count).map(|_| {
+        tokio::spawn(ast_indexer_thread(
             Arc::downgrade(&gcx),
             ast_service.clone(),
-        )
-    );
-    return vec![indexer_handle];
+        ))
+    }).collect()
 }
 
 pub async fn ast_indexer_enqueue_files(ast_service: Arc<AMutex<AstIndexService>>, cpaths: &Vec<String>, wake_up_indexer: bool)

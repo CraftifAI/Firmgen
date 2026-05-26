@@ -59,6 +59,8 @@ export type UserInputProps = {
   messageIndex: number;
   // maybe add images argument ?
   onRetry: (index: number, question: UserMessage["content"]) => void;
+  /** Renders directly under the user message bubble (e.g. agent working indicator). */
+  belowBubble?: React.ReactNode;
   // disableRetry?: boolean;
 };
 
@@ -66,6 +68,7 @@ export const UserInput: React.FC<UserInputProps> = ({
   messageIndex,
   children,
   onRetry,
+  belowBubble,
 }) => {
   const messages = useAppSelector(selectMessages);
 
@@ -109,15 +112,18 @@ export const UserInput: React.FC<UserInputProps> = ({
   return (
     <Container position="relative" pt="1">
       {isCompressed ? (
-        <Reveal defaultOpen={false}>
-          <Flex
-            direction="row"
-            my="1"
-            className={`${styles.userInput} ${styles.userMessageBubble}`}
-          >
-            {elements}
-          </Flex>
-        </Reveal>
+        <Flex direction="column" align="start" gap="0" width="100%">
+          <Reveal defaultOpen={false}>
+            <Flex
+              direction="row"
+              my="1"
+              className={`${styles.userInput} ${styles.userMessageBubble}`}
+            >
+              {elements}
+            </Flex>
+          </Reveal>
+          {belowBubble}
+        </Flex>
       ) : showTextArea ? (
         <RetryForm
           onSubmit={handleSubmit}
@@ -127,51 +133,54 @@ export const UserInput: React.FC<UserInputProps> = ({
           onClose={() => handleShowTextArea(false)}
         />
       ) : (
-        <Flex
-          direction="row"
-          // checking for the length of the lines to determine the position of the edit button
-          gap={linesLength <= 2 ? "2" : "1"}
-          // TODO: what is it's a really long sentence or word with out new lines?
-          align={linesLength <= 2 ? "center" : "end"}
-          my="1"
-          onMouseEnter={() => setIsEditButtonVisible(true)}
-          onMouseLeave={() => setIsEditButtonVisible(false)}
-        >
-          <Button
-            // ref={ref}
-            variant="soft"
-            size="4"
-            className={styles.userInput}
-            // TODO: should this work?
-            // onClick={() => handleShowTextArea(true)}
-            asChild
-          >
-            <div className={styles.userMessageBubble}>{elements}</div>
-          </Button>
+        <Flex direction="column" align="start" gap="0" width="100%">
           <Flex
-            direction={linesLength <= 3 ? "row" : "column"}
-            gap="1"
-            style={{
-              opacity: isEditButtonVisible ? 1 : 0,
-              visibility: isEditButtonVisible ? "visible" : "hidden",
-              transition: "opacity 0.15s, visibility 0.15s",
-            }}
+            direction="row"
+            // checking for the length of the lines to determine the position of the edit button
+            gap={linesLength <= 2 ? "2" : "1"}
+            // TODO: what is it's a really long sentence or word with out new lines?
+            align={linesLength <= 2 ? "center" : "end"}
+            my="1"
+            onMouseEnter={() => setIsEditButtonVisible(true)}
+            onMouseLeave={() => setIsEditButtonVisible(false)}
           >
-            {checkpointsFromMessage && checkpointsFromMessage.length > 0 && (
-              <CheckpointButton
-                checkpoints={checkpointsFromMessage}
-                messageIndex={messageIndex}
-              />
-            )}
-            <IconButton
-              title="Edit message"
+            <Button
+              // ref={ref}
               variant="soft"
-              size={"2"}
-              onClick={() => handleShowTextArea(true)}
+              size="4"
+              className={styles.userInput}
+              // TODO: should this work?
+              // onClick={() => handleShowTextArea(true)}
+              asChild
             >
-              <Pencil2Icon width={15} height={15} />
-            </IconButton>
+              <div className={styles.userMessageBubble}>{elements}</div>
+            </Button>
+            <Flex
+              direction={linesLength <= 3 ? "row" : "column"}
+              gap="1"
+              style={{
+                opacity: isEditButtonVisible ? 1 : 0,
+                visibility: isEditButtonVisible ? "visible" : "hidden",
+                transition: "opacity 0.15s, visibility 0.15s",
+              }}
+            >
+              {checkpointsFromMessage && checkpointsFromMessage.length > 0 && (
+                <CheckpointButton
+                  checkpoints={checkpointsFromMessage}
+                  messageIndex={messageIndex}
+                />
+              )}
+              <IconButton
+                title="Edit message"
+                variant="soft"
+                size={"2"}
+                onClick={() => handleShowTextArea(true)}
+              >
+                <Pencil2Icon width={15} height={15} />
+              </IconButton>
+            </Flex>
           </Flex>
+          {belowBubble}
         </Flex>
       )}
     </Container>

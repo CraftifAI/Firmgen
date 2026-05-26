@@ -1,0 +1,21 @@
+{
+  "project_name": "weftrfetg",
+  "chip": "esp32s3",
+  "flash_mode": "dio",
+  "flash_size": "2MB",
+  "flash_freq": "80m",
+  "flash_files": [
+    {
+      "offset": "0x0",
+      "file": "firmware/bootloader.bin"
+    },
+    {
+      "offset": "0x8000",
+      "file": "firmware/partition-table.bin"
+    },
+    {
+      "offset": "0x10000",
+      "file": "firmware/wifi_station.bin"
+    }
+  ]
+}

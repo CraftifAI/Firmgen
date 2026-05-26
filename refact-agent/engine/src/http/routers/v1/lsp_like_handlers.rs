@@ -217,7 +217,8 @@ pub async fn handle_v1_lsp_initialize(
             global_context.write().await.app_searchable_id = new_app_searchable_id;
             crate::cloud::threads_sub::trigger_threads_subscription_restart(global_context.clone()).await;
         }
-        crate::files_in_workspace::watcher_init(global_context.clone()).await;
+        // crate::files_in_workspace::watcher_init(global_context.clone()).await;
+        tokio::spawn(crate::files_in_workspace::watcher_init(global_context.clone()));
         crate::git::checkpoints::enqueue_init_shadow_repos(global_context.clone()).await;
         let _ = crate::integrations::running_integrations::load_integrations(global_context.clone(), &["**/mcp_*".to_string()]).await;
         

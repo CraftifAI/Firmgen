@@ -24,6 +24,10 @@ export interface StatisticsPage {
   name: "statistics page";
 }
 
+export interface ContextPayloadPage {
+  name: "context payload page";
+}
+
 export interface DocumentationSettingsPage {
   name: "documentation settings";
 }
@@ -67,6 +71,7 @@ export type Page =
   | HistoryList
   | FIMDebugPage
   | StatisticsPage
+  | ContextPayloadPage
   | DocumentationSettingsPage
   | ChatThreadHistoryPage
   | ProjectSourcesPage

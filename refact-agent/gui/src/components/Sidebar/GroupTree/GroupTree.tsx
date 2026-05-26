@@ -49,18 +49,21 @@ export const GroupTree: React.FC = () => {
     isEmbedded,
   } = useGroupTree();
 
+  const showEmbeddedWizard = availableWorkspaces.some(
+    (w) => w.ws_id === "local-workspace",
+  );
+
   return (
     <Flex direction="column" gap="4" mt="4" width="100%">
-      <Flex direction="column" gap="1">
-        <Heading as="h1" size="4" mb="1">
+      <Flex className={styles.welcomeContainer} direction="column" gap="1" width="100%">
+        <Heading as="h1" size="4" mb="1" className={styles.welcomeTitle}>
           Welcome to FirmGen.
         </Heading>
-        <Text size="2" color="gray" mb="1">
-          FirmGen Agent autonomously completes your dev tasks end to end — and
-          gathers both individual and team experience into an evolving knowledge
-          base.
+        <Text size="2" color="gray" mb="1" className={styles.welcomeSubtitle}>
+          Your AI Agent for Firmware Generation.
         </Text>
-        <Heading as="h2" size="3" mt="4">
+
+        {/* <Heading as="h2" size="3" mt="4"> 
           Select your Workspace
         </Heading>
         <Text size="1" color="gray" mb="1">
@@ -86,15 +89,17 @@ export const GroupTree: React.FC = () => {
               </Select.Item>
             ))}
           </Select.Content>
-        </Select.Root>
+        </Select.Root>*/}
         {/* In embedded mode, add a button to select a local folder */}
-        {availableWorkspaces.some((w) => w.ws_id === "local-workspace") && (
+        {showEmbeddedWizard && (
           <Flex direction="column" gap="2" mt="3">
             <EmbeddedBootstrapPage
               showHeading={false}
-              onLaunched={({ workspacePath }) => {
-                handleSetWorkspaceFolder(workspacePath);
-              }}
+              onLaunched={async ({ workspacePath }) =>
+                handleSetWorkspaceFolder(workspacePath, { quiet: true })
+              }
+              onSkipped={handleSkipWorkspaceSelection}
+              onConfirmed={() => void handleConfirmSelectionClick()}
             />
           </Flex>
         )}
@@ -162,22 +167,24 @@ export const GroupTree: React.FC = () => {
           </Flex>
         </Card>
       )}
-      <Flex gap="2" justify="end">
-        <Button
-          onClick={handleSkipWorkspaceSelection}
-          variant="outline"
-          color="gray"
-        >
-          Skip
-        </Button>
-        <Button
-          onClick={() => void handleConfirmSelectionClick()}
-          variant="outline"
-          disabled={!isEmbedded && currentSelectedTeamsGroupNode === null}
-        >
-          Confirm
-        </Button>
-      </Flex>
+      {!showEmbeddedWizard && (
+        <Flex gap="2" justify="end">
+          <Button
+            onClick={handleSkipWorkspaceSelection}
+            variant="outline"
+            color="gray"
+          >
+            Skip
+          </Button>
+          <Button
+            onClick={() => void handleConfirmSelectionClick()}
+            variant="outline"
+            disabled={!isEmbedded && currentSelectedTeamsGroupNode === null}
+          >
+            Confirm
+          </Button>
+        </Flex>
+      )}
     </Flex>
   );
 };

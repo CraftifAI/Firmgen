@@ -15,10 +15,24 @@ export type TextAreaProps = React.ComponentProps<typeof RadixTextArea> &
   React.JSX.IntrinsicElements["textarea"] & {
     onTextAreaHeightChange?: (scrollHeight: number) => void;
     onChange: (event: React.ChangeEvent<HTMLTextAreaElement>) => void;
+    /** Cap auto-grow height at this many text lines (default 11). Beyond this, the field scrolls. */
+    maxVisibleLines?: number;
   };
 
+const defaultMaxVisibleLines = 11;
+
 export const TextArea = React.forwardRef<HTMLTextAreaElement, TextAreaProps>(
-  ({ onTextAreaHeightChange, value, onKeyDown, onChange, ...props }, ref) => {
+  (
+    {
+      onTextAreaHeightChange,
+      value,
+      onKeyDown,
+      onChange,
+      maxVisibleLines = defaultMaxVisibleLines,
+      ...props
+    },
+    ref,
+  ) => {
     const [callChange, setCallChange] = React.useState(true);
     const innerRef = useRef<HTMLTextAreaElement>(null);
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
@@ -63,18 +77,22 @@ export const TextArea = React.forwardRef<HTMLTextAreaElement, TextAreaProps>(
       if (!el) return;
       el.style.height = "1px";
       const scrollHeight = el.scrollHeight;
-      const lineHeightPx =
-        parseInt(getComputedStyle(el).lineHeight, 10) || 20;
-      const minHeight = lineHeightPx + 8; /* one line + padding */
-      const maxHeight = Math.round(lineHeightPx * 3);
-      const naturalHeight = 2 + scrollHeight;
-      const height = Math.max(
-        minHeight,
-        Math.min(naturalHeight, maxHeight)
-      );
-      el.style.height = height + "px";
+      const computed = getComputedStyle(el);
+      const padTop = parseFloat(computed.paddingTop) || 0;
+      const padBottom = parseFloat(computed.paddingBottom) || 0;
+      const padY = padTop + padBottom;
+      let lineHeightPx = parseFloat(computed.lineHeight);
+      if (!Number.isFinite(lineHeightPx) || lineHeightPx <= 0) {
+        const fontSize = parseFloat(computed.fontSize) || 14;
+        lineHeightPx = Math.round(fontSize * 1.5);
+      }
+      const minHeight = Math.round(lineHeightPx + padY);
+      const maxHeight = Math.round(lineHeightPx * maxVisibleLines + padY);
+      const height = Math.max(minHeight, Math.min(scrollHeight, maxHeight));
+      el.style.height = `${height}px`;
+      el.style.overflowY = scrollHeight > maxHeight ? "auto" : "hidden";
       onTextAreaHeightChange?.(height);
-    }, [innerRef.current?.value, value, onTextAreaHeightChange]);
+    }, [value, maxVisibleLines, onTextAreaHeightChange]);
 
     useEffect(() => {
       if (value !== undoRedo.state) {

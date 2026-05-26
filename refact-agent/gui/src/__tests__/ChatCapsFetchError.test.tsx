@@ -40,8 +40,12 @@ describe("chat caps error", () => {
     );
 
     const regex = new RegExp(errorMessage, "i");
-    await waitFor(() => {
-      expect(app.queryByText(regex)).not.toBeNull();
-    });
+    // getCaps retries transient failures before surfacing the error (see caps.ts).
+    await waitFor(
+      () => {
+        expect(app.queryByText(regex)).not.toBeNull();
+      },
+      { timeout: 12_000 },
+    );
   });
 });

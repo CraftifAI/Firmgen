@@ -381,9 +381,7 @@ export const UsageCounter: React.FC<UsageCounterProps> = ({
     return outputMeteringTokens ?? outputUsageTokens;
   }, [outputMeteringTokens, outputUsageTokens]);
 
-  const shouldUsageBeHidden = useMemo(() => {
-    return !isInline && inputTokens === 0 && outputTokens === 0;
-  }, [outputTokens, inputTokens, isInline]);
+  const shouldUsageBeHidden = true; // Temporarily hiding the usage counter
 
   useEffectOnce(() => {
     const handleScroll = (event: WheelEvent) => {

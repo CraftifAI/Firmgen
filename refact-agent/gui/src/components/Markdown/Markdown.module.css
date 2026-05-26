@@ -29,13 +29,19 @@
  *   .rt-Code:where(.rt-variant-soft) { background-color: var(--accent-a3); color: var(--accent-a11); }
  * Override those accent steps on this element only (no !important).
  */
+.markdown_code_pre {
+  background: var(--refact-markdown-code-pre-bg,
+  var(--refact-code-block-pre-bg, var(--refact-default-code-pre-bg, #0a182b))) !important;
+}
+
+
 .code_inline:global(.rt-Code) {
   word-break: break-word;
   word-wrap: break-word;
   white-space: break-spaces;
-  border-radius: 6px;
+  /* border-radius: 6px; */
   padding: 1px 6px;
-  border: 1px solid rgba(120, 160, 255, 0.22);
+  /* border: 1px solid rgba(120, 160, 255, 0.22); */
   }
 
 .code_inline:global(.rt-Code.rt-variant-soft) {
@@ -45,8 +51,12 @@
 
 
 .code_block {
-  color: inherit;
-  background: none;
+  color: #ffffff;
+  background: inherit;
+}
+.code_block span {
+  color: inherit !important;
+  font-weight: inherit !important;
 }
 
 .code_wrap {

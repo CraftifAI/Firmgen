@@ -22,10 +22,6 @@ pub struct FactoryReleaseQuery {
     pub chat_id: String,
 }
 
-const FACTORY_FLASH_SH: &str = include_str!("../../../../resources/esp32_factory/factory_flash.sh");
-const FACTORY_FLASH_BAT: &str = include_str!("../../../../resources/esp32_factory/factory_flash.bat");
-const FACTORY_FLASH_PS1: &str = include_str!("../../../../resources/esp32_factory/factory_flash.ps1");
-
 fn sha256_hex(data: &[u8]) -> String {
     let out = Sha256::digest(data);
     out.iter().map(|b| format!("{:02x}", b)).collect()
@@ -53,7 +49,32 @@ fn content_disposition_for(filename: &str) -> String {
     )
 }
 
-/// Build `{project}_release.zip` bytes (same layout as `package_esp32_release_factory.py` inner folder).
+/// Extract just the filename from a relative path (e.g. "bootloader/bootloader.bin" → "bootloader.bin").
+/// If there's a collision, keep original relative path to avoid clobbering.
+fn flatten_filename(rel: &str) -> String {
+    let normalized = rel.replace('\\', "/");
+    normalized
+        .rsplit('/')
+        .next()
+        .unwrap_or(&normalized)
+        .to_string()
+}
+
+/// Build `{project}_release.zip` — a clean, self-contained firmware archive.
+///
+/// Structure:
+/// ```text
+/// {project}_release/
+/// ├── firmware/
+/// │   ├── bootloader.bin
+/// │   ├── partition-table.bin
+/// │   └── {project}.bin
+/// ├── flash_config.json    ← single metadata file
+/// ├── flash.bat            ← simple hardcoded esptool command
+/// ├── flash.sh             ← simple hardcoded esptool command
+/// ├── SHA256SUMS.txt
+/// └── README.md
+/// ```
 fn build_factory_zip(project_dir: &Path) -> Result<Vec<u8>, String> {
     let project_name = project_dir
         .file_name()
@@ -73,6 +94,7 @@ fn build_factory_zip(project_dir: &Path) -> Result<Vec<u8>, String> {
     let prefix = format!("{}_release", project_name);
     let mut files: BTreeMap<String, Vec<u8>> = BTreeMap::new();
 
+    // Sort flash_files by offset (numerically).
     let mut ordered: Vec<(String, String)> = flash_files
         .iter()
         .filter_map(|(off, v)| v.as_str().map(|rel| (off.clone(), rel.to_string())))
@@ -81,118 +103,236 @@ fn build_factory_zip(project_dir: &Path) -> Result<Vec<u8>, String> {
         u64::from_str_radix(off.trim_start_matches("0x"), 16).unwrap_or(0)
     });
 
-    let mut firmware_records = Vec::new();
-    for (offset, rel) in &ordered {
+    // Flatten firmware filenames. If two files would collide, fall back to full relative path.
+    let flat_names: Vec<String> = ordered.iter().map(|(_, rel)| flatten_filename(rel)).collect();
+    let mut final_names: Vec<String> = Vec::with_capacity(ordered.len());
+    for (i, flat) in flat_names.iter().enumerate() {
+        let has_collision = flat_names.iter().enumerate().any(|(j, other)| j != i && other == flat);
+        if has_collision {
+            // Keep the relative path, just normalize slashes
+            final_names.push(ordered[i].1.replace('\\', "/").trim_start_matches('/').to_string());
+        } else {
+            final_names.push(flat.clone());
+        }
+    }
+
+    // Read firmware files and build flash_config entries.
+    let mut flash_config_files = Vec::new();
+    for (idx, (offset, rel)) in ordered.iter().enumerate() {
         let src = build_dir.join(rel);
         if !src.is_file() {
             return Err(format!("Missing firmware file: {}", src.display()));
         }
         let data = std::fs::read(&src).map_err(|e| e.to_string())?;
-        let arc_rel = rel.replace('\\', "/").trim_start_matches('/').to_string();
-        if arc_rel.is_empty() {
-            return Err(format!("Bad flash_files path: {}", rel));
-        }
-        let arc = format!("{}/firmware/{}", prefix, arc_rel);
-        firmware_records.push(json!({
+        let firmware_name = &final_names[idx];
+        let arc = format!("{}/firmware/{}", prefix, firmware_name);
+
+        flash_config_files.push(json!({
             "offset": offset,
-            "source_relative_path": rel,
-            "release_relative_path": format!("firmware/{}", arc_rel),
-            "sha256": sha256_hex(&data),
-            "size_bytes": data.len(),
+            "file": format!("firmware/{}", firmware_name),
         }));
+
         files.insert(arc, data);
     }
 
-    files.insert(format!("{}/flasher_args.json", prefix), meta_str.into_bytes());
-    let flash_args_path = build_dir.join("flash_args");
-    if flash_args_path.is_file() {
-        let fa = std::fs::read(&flash_args_path).map_err(|e| e.to_string())?;
-        files.insert(format!("{}/flash_args", prefix), fa);
-    }
-
+    // Extract chip and flash settings from ESP-IDF metadata.
     let chip = meta
         .pointer("/extra_esptool_args/chip")
         .and_then(|v| v.as_str())
-        .unwrap_or("unknown");
+        .unwrap_or("auto");
     let flash_mode = meta
         .pointer("/flash_settings/flash_mode")
         .and_then(|v| v.as_str())
-        .unwrap_or("unknown");
+        .unwrap_or("dio");
     let flash_size = meta
         .pointer("/flash_settings/flash_size")
         .and_then(|v| v.as_str())
-        .unwrap_or("unknown");
+        .unwrap_or("detect");
     let flash_freq = meta
         .pointer("/flash_settings/flash_freq")
         .and_then(|v| v.as_str())
-        .unwrap_or("unknown");
+        .unwrap_or("40m");
 
-    let readme = format!(
-        r#"# {project_name} Factory Release
+    // Build flash_config.json — single, clean metadata file.
+    let flash_config = json!({
+        "project_name": project_name,
+        "chip": chip,
+        "flash_mode": flash_mode,
+        "flash_size": flash_size,
+        "flash_freq": flash_freq,
+        "flash_files": flash_config_files,
+    });
+    let flash_config_str = serde_json::to_string_pretty(&flash_config).map_err(|e| e.to_string())?;
+    files.insert(format!("{}/flash_config.json", prefix), flash_config_str.into_bytes());
 
-## Operator workflow
+    // Build the esptool write_flash argument string for scripts and README.
+    let mut esptool_file_args = String::new();
+    let mut bat_file_args = String::new();
+    for entry in &flash_config_files {
+        let offset = entry["offset"].as_str().unwrap_or("0x0");
+        let file = entry["file"].as_str().unwrap_or("firmware/unknown.bin");
+        esptool_file_args.push_str(&format!("  {} {} \\\n", offset, file));
+        // BAT uses backslash paths and ^ for continuation
+        let bat_file = file.replace('/', "\\");
+        bat_file_args.push_str(&format!("  {} {} ^\n", offset, bat_file));
+    }
+    // Trim trailing continuation characters
+    let esptool_file_args = esptool_file_args.trim_end_matches(" \\\n");
+    let bat_file_args = bat_file_args.trim_end_matches(" ^\n");
 
-### Windows
-Put the release `.zip` and `factory_flash.bat` in the same folder, then double-click `factory_flash.bat`.
+    // Generate flash.sh — simple, hardcoded, no JSON parsing.
+    let flash_sh = format!(
+        r#"#!/usr/bin/env bash
+# Factory flash script for {project_name}
+# Usage: bash flash.sh [PORT]
+#   PORT defaults to /dev/ttyUSB0 (override with first argument or FLASH_PORT env var)
+set -euo pipefail
 
-### Linux / macOS
-```bash
-bash factory_flash.sh
-```
+PORT="${{{flash_port_env}:-${{1:-/dev/ttyUSB0}}}}"
 
-The launcher extracts the zip to a temp directory, finds `flasher_args.json`, and flashes via esptool.
+echo "[INFO] Flashing {project_name} to $PORT ..."
+esptool.py --chip {chip} --port "$PORT" --baud 460800 write_flash \
+  --flash_mode {flash_mode} --flash_size {flash_size} --flash_freq {flash_freq} \
+{esptool_file_args}
 
-## Firmware target
-- Chip: `{chip}`
-- Flash mode: `{flash_mode}`
-- Flash size: `{flash_size}`
-- Flash freq: `{flash_freq}`
-
-## Notes
-- Requires Python and `esptool` on the host (unless you bundle esptool).
-- USB drivers may be required on Windows.
+echo "[OK] Flash complete."
 "#,
         project_name = project_name,
         chip = chip,
         flash_mode = flash_mode,
         flash_size = flash_size,
         flash_freq = flash_freq,
+        esptool_file_args = esptool_file_args,
+        flash_port_env = "FLASH_PORT",
+    );
+    files.insert(format!("{}/flash.sh", prefix), flash_sh.into_bytes());
+
+    // Generate flash.bat — simple, hardcoded, no JSON parsing or PowerShell.
+    let flash_bat = format!(
+        r#"@echo off
+REM Factory flash script for {project_name}
+REM Usage: flash.bat [COM_PORT]
+REM   COM_PORT defaults to COM3 (override with first argument or FLASH_PORT env var)
+setlocal
+
+if not "%~1"=="" (
+  set PORT=%~1
+) else if defined FLASH_PORT (
+  set PORT=%FLASH_PORT%
+) else (
+  set PORT=COM3
+)
+
+echo [INFO] Flashing {project_name} to %PORT% ...
+esptool.py --chip {chip} --port %PORT% --baud 460800 write_flash ^
+  --flash_mode {flash_mode} --flash_size {flash_size} --flash_freq {flash_freq} ^
+{bat_file_args}
+
+if %ERRORLEVEL% NEQ 0 (
+  echo.
+  echo [ERR] Flash failed with exit code %ERRORLEVEL%.
+  pause
+  exit /b %ERRORLEVEL%
+)
+
+echo [OK] Flash complete.
+pause
+"#,
+        project_name = project_name,
+        chip = chip,
+        flash_mode = flash_mode,
+        flash_size = flash_size,
+        flash_freq = flash_freq,
+        bat_file_args = bat_file_args,
+    );
+    files.insert(format!("{}/flash.bat", prefix), flash_bat.into_bytes());
+
+    // Generate README.md
+    let mut readme_flash_args = String::new();
+    for entry in &flash_config_files {
+        let offset = entry["offset"].as_str().unwrap_or("0x0");
+        let file = entry["file"].as_str().unwrap_or("firmware/unknown.bin");
+        readme_flash_args.push_str(&format!("  {} {} \\\n", offset, file));
+    }
+    let readme_flash_args = readme_flash_args.trim_end_matches(" \\\n");
+
+    let readme = format!(
+        r#"# {project_name} — Factory Release
+
+## Quick Start
+
+1. Extract this ZIP
+2. Connect your {chip} board via USB
+3. Run the flash script:
+
+### Windows
+```
+flash.bat COM3
+```
+
+### Linux / macOS
+```bash
+bash flash.sh /dev/ttyUSB0
+```
+
+Replace the port with your actual serial port.
+
+## Manual Flash Command
+
+If you prefer to run esptool directly:
+
+```bash
+esptool.py --chip {chip} --port PORT --baud 460800 write_flash \
+  --flash_mode {flash_mode} --flash_size {flash_size} --flash_freq {flash_freq} \
+{readme_flash_args}
+```
+
+## Firmware Details
+
+| Setting    | Value        |
+|------------|--------------|
+| Chip       | `{chip}`     |
+| Flash mode | `{flash_mode}` |
+| Flash size | `{flash_size}` |
+| Flash freq | `{flash_freq}` |
+
+## Prerequisites
+
+- **esptool** must be installed and on your PATH
+  - Install via pip: `pip install esptool`
+  - Or download standalone: https://github.com/espressif/esptool/releases
+- USB drivers for your board (CP210x, CH340, FTDI, etc.)
+
+## Files
+
+- `flash_config.json` — Machine-readable flash configuration
+- `firmware/` — Binary firmware files
+- `flash.bat` — Windows flash script
+- `flash.sh` — Linux/macOS flash script
+- `SHA256SUMS.txt` — File integrity checksums
+"#,
+        project_name = project_name,
+        chip = chip,
+        flash_mode = flash_mode,
+        flash_size = flash_size,
+        flash_freq = flash_freq,
+        readme_flash_args = readme_flash_args,
     );
     files.insert(format!("{}/README.md", prefix), readme.into_bytes());
 
-    let manifest = json!({
-        "project_name": project_name,
-        "release_type": "factory_flash_release",
-        "chip": chip,
-        "flash_settings": meta.get("flash_settings").cloned().unwrap_or(json!({})),
-        "write_flash_args": meta.get("write_flash_args").cloned().unwrap_or(json!([])),
-        "firmware_files": firmware_records,
-    });
-    let manifest_str = serde_json::to_string_pretty(&manifest).map_err(|e| e.to_string())?;
-    files.insert(format!("{}/manifest.json", prefix), manifest_str.into_bytes());
-
+    // SHA256SUMS.txt
     let mut checksum_lines: Vec<String> = Vec::new();
     for (path, bytes) in files.iter() {
-        checksum_lines.push(format!("{}  {}", sha256_hex(bytes), path));
+        // Use relative path within the release folder for checksums
+        let rel_path = path.strip_prefix(&format!("{}/", prefix)).unwrap_or(path);
+        checksum_lines.push(format!("{}  {}", sha256_hex(bytes), rel_path));
     }
     files.insert(
         format!("{}/SHA256SUMS.txt", prefix),
         checksum_lines.join("\n").into_bytes(),
     );
 
-    files.insert(
-        format!("{}/factory_flash.sh", prefix),
-        FACTORY_FLASH_SH.as_bytes().to_vec(),
-    );
-    files.insert(
-        format!("{}/factory_flash.bat", prefix),
-        FACTORY_FLASH_BAT.as_bytes().to_vec(),
-    );
-    files.insert(
-        format!("{}/factory_flash.ps1", prefix),
-        FACTORY_FLASH_PS1.as_bytes().to_vec(),
-    );
-
+    // Write ZIP
     let mut cursor = Cursor::new(Vec::new());
     {
         let mut zip = ZipWriter::new(&mut cursor);

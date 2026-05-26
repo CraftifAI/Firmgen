@@ -100,9 +100,9 @@ impl WorkflowNode {
             return WorkflowNode::Monitoring;
         }
 
-        // Flashing: device flash, erase
+        // Flashing: device detect, flash, erase
         if combined.contains("esp32_device") {
-            if op.contains("flash") || op.contains("erase") {
+            if op.contains("detect") || op.contains("flash") || op.contains("erase") {
                 return WorkflowNode::Flashing;
             }
         }
@@ -971,9 +971,12 @@ pub async fn record_tool_complete(
     if is_failure {
         session.last_error_stage = Some(node);
     } else if is_success {
-        // If the same stage that had an error now succeeds, the debug cycle is resolved.
-        if session.last_error_stage == Some(node) {
-            session.last_error_stage = None;
+        // Clear error stage when the same stage OR any higher stage succeeds
+        // (the agent moved on and recovered, even if it never retried the exact failed stage).
+        if let Some(err_stage) = session.last_error_stage {
+            if node.ordinal() >= err_stage.ordinal() {
+                session.last_error_stage = None;
+            }
         }
     }
 
@@ -1024,9 +1027,11 @@ pub async fn record_generic_tool_success(
     let mut store = PROGRESS_STORE.write().await;
     let session = store.entry(chat_id.to_string()).or_default();
 
-    // If the same stage that had an error now succeeds, the debug cycle is resolved.
-    if session.last_error_stage == Some(node) {
-        session.last_error_stage = None;
+    // Clear error stage when this stage or any higher stage succeeds.
+    if let Some(err_stage) = session.last_error_stage {
+        if node.ordinal() >= err_stage.ordinal() {
+            session.last_error_stage = None;
+        }
     }
 
     if let Some(last) = session.events.iter_mut().rev().find(|e| e.id == tool_call_id) {
@@ -1109,9 +1114,9 @@ pub async fn record_tool_error(
 
 /// Get progress for a chat_id. Returns a DTO suitable for JSON API.
 ///
-/// Uses high-water-mark locking: `current_node` never regresses below the
-/// highest stage ever reached. When a stage fails and the agent runs lower-stage
-/// tools to fix the issue, `current_node` stays locked and `is_debugging` is set.
+/// `current_node` follows the highest stage with live or completed tool activity.
+/// When a stage fails and the agent runs lower-stage tools to fix it,
+/// `current_node` stays locked on the failed stage and `is_debugging` is set.
 pub async fn get_progress(chat_id: &str) -> Option<ProgressSessionDto> {
     {
         let store = PROGRESS_STORE.read().await;
@@ -1181,32 +1186,6 @@ pub async fn get_progress(chat_id: &str) -> Option<ProgressSessionDto> {
         })
         .collect();
 
-    // Derive current_node from events, but never go below the high water mark.
-    let mut derived_node = WorkflowNode::Planning;
-    for node in &order {
-        if completed_nodes.contains(node) {
-            derived_node = *node;
-        }
-    }
-    if has_active {
-        // Find the highest active node (not the lowest — avoids regressing during debug).
-        for node in order.iter().rev() {
-            if event_dtos.iter().any(|e| e.node == *node && (e.status == ToolExecutionStatus::Ongoing || e.status == ToolExecutionStatus::Pending)) {
-                if node.ordinal() > derived_node.ordinal() {
-                    derived_node = *node;
-                }
-                break;
-            }
-        }
-    }
-
-    // Enforce the high-water-mark lock: never regress.
-    let current_node = if session.high_water_mark.ordinal() > derived_node.ordinal() {
-        session.high_water_mark
-    } else {
-        derived_node
-    };
-
     // Detect debugging state: a stage had an error and the agent is now running
     // tools at a lower stage to fix it.
     let is_debugging = session.last_error_stage.is_some() && has_active && {
@@ -1215,6 +1194,29 @@ pub async fn get_progress(chat_id: &str) -> Option<ProgressSessionDto> {
             (e.status == ToolExecutionStatus::Ongoing || e.status == ToolExecutionStatus::Pending)
                 && e.node.ordinal() < err_ord
         })
+    };
+
+    // current_node: node of the most recent actively-running tool (so the spinner
+    // always follows what is happening RIGHT NOW, not the historical maximum).
+    // Fallback to most recent completed tool; final fallback Planning.
+    // During debugging lock to the failed stage so the user sees which stage is broken.
+    let current_node = if is_debugging {
+        session.last_error_stage.unwrap_or(session.high_water_mark)
+    } else {
+        let active_node = session.events.iter().rev()
+            .find(|e| e.status == ToolExecutionStatus::Ongoing || e.status == ToolExecutionStatus::Pending)
+            .map(|e| WorkflowNode::from_tool_operation(&e.tool_name, &e.operation));
+
+        let completed_node = session.events.iter().rev()
+            .find(|e| matches!(
+                e.status,
+                ToolExecutionStatus::Success
+                    | ToolExecutionStatus::Cached
+                    | ToolExecutionStatus::Skipped
+            ))
+            .map(|e| WorkflowNode::from_tool_operation(&e.tool_name, &e.operation));
+
+        active_node.or(completed_node).unwrap_or(WorkflowNode::Planning)
     };
 
     let debug_iteration = session.last_error_stage

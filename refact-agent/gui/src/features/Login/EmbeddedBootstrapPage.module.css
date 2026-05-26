@@ -1,0 +1,605 @@
+/* FirmGen firmware setup — palette aligned to target reference */
+
+.page,
+.embeddedShell {
+  /* Match app root background from theme-config.css */
+  --fg-page-bg: var(--background, #0b112000);
+  /* --fg-border: #252d3a; */
+  --fg-muted: #94a3b8;
+  --fg-accent: #7dd3fc;
+  --fg-accent-text: #0a0a0a;
+  --fg-input-bg: #1a1a2400;
+  --fg-input-border: #2f3f61;
+  --fg-card-idle: rgba(255, 255, 255, 0.035);
+  --fg-card-selected: rgba(125, 211, 252, 0.09);
+  --fg-browse-bg: #2c3544;
+  --fg-browse-bg-hover: #3d4758;
+}
+
+.page {
+  min-height: 100%;
+  background: var(--fg-page-bg);
+  color: #f8fafc;
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--fg-border);
+  padding: 1rem 1.5rem;
+}
+
+.main {
+  flex: 1;
+  overflow: hidden;
+  padding: 2rem 1.75rem 2.5rem;
+}
+
+.inner {
+  max-width: 44rem;
+  margin: 0 auto;
+}
+
+.welcomeTitle {
+  color: #fff;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin-bottom: 0.65rem;
+}
+
+.welcomeSubtitle {
+  color: var(--fg-muted);
+  line-height: 1.55;
+  margin-bottom: 2rem;
+  max-width: 36rem;
+}
+
+.formStack {
+  margin: 0 auto;
+  display: flex;
+  width: 70%;
+  flex-direction: column;
+  gap: 1.75rem;
+}
+
+.fieldBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.boardField {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.boardLabelRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.addBoardBtn {
+  background: transparent;
+  border: 1px solid var(--fg-accent);
+  color: var(--fg-accent);
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.2rem 0.65rem;
+  cursor: pointer;
+  line-height: 1.5;
+  transition: background 0.15s;
+}
+
+.addBoardBtn:hover {
+  background: rgba(125, 211, 252, 0.1);
+}
+
+/* User boards manage row */
+.userBoardsList {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--fg-input-border);
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.userBoardsLabel {
+  font-size: 0.7rem;
+  color: var(--fg-muted);
+  font-weight: 600;
+  margin-bottom: 0.15rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.userBoardRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.userBoardName {
+  flex: 1;
+  font-size: 0.8125rem;
+  color: #f1f5f9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.iconBtn {
+  background: transparent;
+  border: 1px solid var(--fg-input-border);
+  color: var(--fg-muted);
+  border-radius: 4px;
+  width: 1.5rem;
+  height: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 0.75rem;
+  flex-shrink: 0;
+  transition: border-color 0.12s, color 0.12s;
+}
+
+.iconBtn:hover {
+  border-color: var(--fg-accent);
+  color: var(--fg-accent);
+}
+
+.iconBtnDanger {
+  composes: iconBtn;
+}
+
+.iconBtnDanger:hover {
+  border-color: #fca5a5;
+  color: #fca5a5;
+}
+
+.label {
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.8125rem;
+  margin-bottom: 0.4rem;
+  display: block;
+  letter-spacing: 0.01em;
+}
+
+.fieldRoot {
+  width: 100%;
+  background-color: var(--fg-input-bg) !important;
+  border: 1px solid var(--fg-input-border) !important;
+  border-radius: 8px;
+  box-shadow: none !important;
+}
+
+.fieldRoot input {
+  color: #f1f5f9;
+}
+
+.fieldRoot input::placeholder {
+  color: #64748b;
+}
+
+.browseSlot {
+  padding-right: 4px;
+  padding-left: 2px;
+  border-left: 1px solid var(--fg-input-border);
+  margin-left: 2px;
+}
+
+.browseBtn {
+  background: var(--fg-browse-bg) !important;
+  color: #fff !important;
+  border-radius: 6px !important;
+  font-weight: 500 !important;
+  font-size: 0.75rem !important;
+  min-height: 1.75rem !important;
+  height: 1.75rem !important;
+  padding: 0 0.65rem !important;
+  border: none !important;
+  box-shadow: none !important;
+  cursor: pointer;
+}
+
+.browseBtn:hover:not(:disabled) {
+  background: var(--fg-browse-bg-hover) !important;
+}
+
+.boardSelectTrigger {
+  width: 100%;
+  background-color: var(--fg-input-bg) !important;
+  border: 1px solid var(--fg-input-border) !important;
+  border-radius: 8px !important;
+  color: #f1f5f9 !important;
+  box-shadow: none !important;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 0.25rem;
+}
+
+.skipBtn {
+  border: 1px solid rgba(255, 255, 255, 0.5) !important;
+  color: #fff !important;
+  background: transparent !important;
+  border-radius: 8px !important;
+  font-weight: 500 !important;
+  box-shadow: none !important;
+}
+
+.confirmBtn {
+  background: var(--fg-accent) !important;
+  color: var(--fg-accent-text) !important;
+  border-radius: 8px !important;
+  border: none !important;
+  font-weight: 600 !important;
+  box-shadow: none !important;
+}
+
+.embeddedShell {
+  background: var(--fg-page-bg);
+  color: #f8fafc;
+  border-radius: 12px;
+  border: 1px solid var(--fg-border);
+  padding: 1.25rem;
+}
+
+.logoMark {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 1rem;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.profileBtn {
+  border: none;
+  background: transparent;
+  padding: 4px;
+  cursor: default;
+  color: var(--fg-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+}
+
+.profileBtn:focus-visible {
+  outline: 2px solid var(--fg-accent);
+  outline-offset: 2px;
+}
+
+.errorText {
+  color: #fca5a5;
+  font-size: 0.875rem;
+}
+
+/* Laptop-friendly compact layout while preserving desktop look */
+@media (max-height: 820px) {
+  .main {
+    padding: 1.25rem 1.25rem 1.5rem;
+  }
+
+  .formStack {
+    gap: 1rem;
+  }
+
+  .label {
+    font-size: 0.78rem;
+    margin-bottom: 0.25rem;
+  }
+
+}
+
+@media (max-height: 760px) {
+  .main {
+    overflow: auto;
+  }
+}
+
+@media (max-width: 1280px) {
+  .formStack {
+    width: 86%;
+  }
+}
+
+@media (max-width: 900px) {
+  .formStack {
+    width: 100%;
+  }
+}
+
+/* ── Add Board Modal ─────────────────────────────────────────────────────────── */
+
+.modalContent {
+  /* Dialog is portaled outside .page — define palette here so buttons/inputs work */
+  --fg-accent: #7dd3fc;
+  --fg-accent-text: #0a0a0a;
+  --fg-muted: #94a3b8;
+  --fg-input-border: #2f3f61;
+
+  background: #131a26 !important;
+  border: 1px solid #2f3f61 !important;
+  border-radius: 12px !important;
+  padding: 1.5rem !important;
+  max-width: 560px !important;
+  width: 95vw !important;
+  color: #f1f5f9 !important;
+  overflow: visible !important;
+}
+
+.modalTabsRoot {
+  display: block;
+}
+
+.modalTitle {
+  font-size: 1rem !important;
+  font-weight: 700 !important;
+  color: #fff !important;
+  margin-bottom: 1rem !important;
+}
+
+.modalTabs {
+  margin-bottom: 1rem;
+}
+
+.tabContent {
+  padding-top: 0.5rem;
+  /* Fixed scrollable area: 88vh minus title (~40px) + tabs list (~44px) + footer (~60px) + padding (~60px) */
+  max-height: calc(88vh - 220px);
+  overflow-y: auto;
+}
+
+.tabDesc {
+  font-size: 0.8125rem;
+  color: var(--fg-muted);
+  margin-bottom: 0.75rem;
+  line-height: 1.5;
+}
+
+.modalFooter {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #2f3f61;
+  flex-shrink: 0;
+}
+
+.cancelBtn {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.2);
+  color: #94a3b8;
+  border-radius: 7px;
+  padding: 0.4rem 0.9rem;
+  font-size: 0.8125rem;
+  cursor: pointer;
+  transition: border-color 0.12s;
+}
+
+.cancelBtn:hover {
+  border-color: rgba(255,255,255,0.4);
+  color: #f1f5f9;
+}
+
+.saveBtn {
+  background: #7dd3fc !important;
+  color: #0a0a0a !important;
+  border: none !important;
+  border-radius: 7px;
+  padding: 0.4rem 1rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.saveBtn:disabled {
+  background: #334155 !important;
+  color: #94a3b8 !important;
+  cursor: not-allowed;
+}
+
+.saveBtn:not(:disabled):hover {
+  background: #93daff !important;
+}
+
+.modalError {
+  display: block;
+  color: #fca5a5;
+  font-size: 0.8rem;
+  margin-top: 0.5rem;
+}
+
+/* Import tab */
+.importActions {
+  margin-bottom: 0.65rem;
+}
+
+.filePickBtn {
+  background: #1e293b;
+  border: 1px dashed #2f3f61;
+  color: #94a3b8;
+  border-radius: 7px;
+  padding: 0.45rem 0.9rem;
+  font-size: 0.8125rem;
+  cursor: pointer;
+  transition: border-color 0.12s, color 0.12s;
+}
+
+.filePickBtn:hover {
+  border-color: var(--fg-accent);
+  color: var(--fg-accent);
+}
+
+.jsonTextarea {
+  width: 100%;
+  background: #0d1320;
+  border: 1px solid #2f3f61;
+  border-radius: 8px;
+  color: #94d4a8;
+  font-family: "Fira Code", "Consolas", monospace;
+  font-size: 0.75rem;
+  padding: 0.65rem;
+  resize: vertical;
+  box-sizing: border-box;
+  outline: none;
+}
+
+.jsonTextarea:focus {
+  border-color: var(--fg-accent);
+}
+
+/* Build form steps */
+.stepNav {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.stepPill {
+  background: transparent;
+  border: 1px solid #2f3f61;
+  color: var(--fg-muted);
+  border-radius: 999px;
+  padding: 0.2rem 0.75rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.stepPillActive {
+  border-color: var(--fg-accent);
+  color: var(--fg-accent);
+  background: rgba(125, 211, 252, 0.08);
+}
+
+.stepPillDone {
+  border-color: #4ade80;
+  color: #4ade80;
+  background: rgba(74, 222, 128, 0.06);
+}
+
+.buildStep {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-height: 220px;
+}
+
+.buildRow {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.buildRow2 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.5rem;
+}
+
+.buildLabel {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #cbd5e1;
+}
+
+.required {
+  color: #fca5a5;
+}
+
+.buildHint {
+  font-size: 0.7rem;
+  color: var(--fg-muted);
+}
+
+.buildInput {
+  background: #0d1320;
+  border: 1px solid #2f3f61;
+  border-radius: 6px;
+  color: #f1f5f9;
+  padding: 0.35rem 0.6rem;
+  font-size: 0.8125rem;
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.buildInput:focus {
+  border-color: var(--fg-accent);
+}
+
+.buildInputSm {
+  composes: buildInput;
+  width: 100%;
+}
+
+.buildSelect {
+  background: #0d1320;
+  border: 1px solid #2f3f61;
+  border-radius: 6px;
+  color: #f1f5f9;
+  padding: 0.35rem 0.6rem;
+  font-size: 0.8125rem;
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+  cursor: pointer;
+}
+
+.buildSelectSm {
+  composes: buildSelect;
+  width: 100%;
+}
+
+.buildSelect:focus, .buildSelectSm:focus {
+  border-color: var(--fg-accent);
+}
+
+.buildTextarea {
+  composes: buildInput;
+  resize: vertical;
+  font-family: inherit;
+  line-height: 1.4;
+}
+
+.checkLabel {
+  font-size: 0.8125rem;
+  color: #f1f5f9;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  cursor: pointer;
+}
+
+/* PDF draft banner */
+.draftBanner {
+  background: rgba(125, 211, 252, 0.08);
+  border: 1px solid rgba(125, 211, 252, 0.25);
+  border-radius: 7px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8rem;
+  color: var(--fg-accent);
+  margin-bottom: 0.75rem;
+}

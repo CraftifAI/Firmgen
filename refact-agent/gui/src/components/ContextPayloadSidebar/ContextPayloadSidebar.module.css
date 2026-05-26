@@ -12,6 +12,26 @@
   z-index: 1;
 }
 
+.pageContainer {
+  width: min(960px, 100%);
+  max-width: 960px;
+  min-width: 0;
+  height: auto;
+  max-height: 100%;
+  border: 1px solid var(--gray-6);
+  border-radius: var(--radius-3);
+  background: var(--gray-1);
+  margin: var(--space-6) auto;
+  box-shadow: var(--shadow-2);
+}
+
+.pageHeader {
+  border-bottom: 1px solid var(--gray-6);
+  background: var(--gray-2);
+  border-top-left-radius: var(--radius-3);
+  border-top-right-radius: var(--radius-3);
+}
+
 .collapsedContainer {
   width: 40px;
   height: 100%;

@@ -1,6 +1,4 @@
 use std::fs;
-#[cfg(not(windows))]
-use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 
 const LARGE_FILE_SIZE_THRESHOLD: u64 = 4096*1024; // 4Mb files
@@ -17,7 +15,14 @@ pub const SOURCE_FILE_EXTENSIONS: &[&str] = &[
 ];
 
 pub fn is_valid_file(path: &PathBuf, allow_hidden_folders: bool, ignore_size_thresholds: bool) -> Result<(), Box<dyn std::error::Error>> {
-    if !path.is_file() {
+    // Single metadata() call — avoids the extra syscall that path.is_file() would make
+    // before the metadata() call below (on Windows each is a separate GetFileAttributesW).
+    let metadata = match fs::metadata(path) {
+        Ok(m) => m,
+        Err(_) => return Err("Unable to access file metadata".into()),
+    };
+
+    if !metadata.is_file() {
         return Err("Path is not a file".into());
     }
 
@@ -29,23 +34,20 @@ pub fn is_valid_file(path: &PathBuf, allow_hidden_folders: bool, ignore_size_thr
         return Err("Parent dir starts with a dot".into());
     }
 
-    if let Ok(metadata) = fs::metadata(path) {
-        let file_size = metadata.len();
-        if !ignore_size_thresholds && file_size < SMALL_FILE_SIZE_THRESHOLD {
-            return Err("File size is too small".into());
+    let file_size = metadata.len();
+    if !ignore_size_thresholds && file_size < SMALL_FILE_SIZE_THRESHOLD {
+        return Err("File size is too small".into());
+    }
+    if !ignore_size_thresholds && file_size > LARGE_FILE_SIZE_THRESHOLD {
+        return Err("File size is too large".into());
+    }
+    #[cfg(not(windows))]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let permissions = metadata.permissions();
+        if permissions.mode() & 0o400 == 0 {
+            return Err("File has no read permissions".into());
         }
-        if !ignore_size_thresholds && file_size > LARGE_FILE_SIZE_THRESHOLD {
-            return Err("File size is too large".into());
-        }
-        #[cfg(not(windows))]
-        {
-            let permissions = metadata.permissions();
-            if permissions.mode() & 0o400 == 0 {
-                return Err("File has no read permissions".into());
-            }
-        }
-    } else {
-        return Err("Unable to access file metadata".into());
     }
     Ok(())
 }

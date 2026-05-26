@@ -49,18 +49,84 @@ pub fn get_git_remotes(repository_path: &Path) -> Result<Vec<(String, String)>, 
 }
 
 pub fn git_ls_files(repository_path: &PathBuf) -> Option<Vec<PathBuf>> {
+    // On Windows, shell out to git.exe: it uses the index cache and filesystem monitor,
+    // making it dramatically faster than libgit2's IndexAndWorkdir scan which stat()-s
+    // every working-tree file (very slow on NTFS).
+    #[cfg(windows)]
+    if let Some(files) = git_ls_files_via_cli(repository_path) {
+        return Some(files);
+    }
+    git_ls_files_libgit2(repository_path)
+}
+
+/// Windows-only: runs `git ls-files --cached --others --exclude-standard`.
+/// Returns None if git is not on PATH or the command fails.
+#[cfg(windows)]
+fn git_ls_files_via_cli(repository_path: &PathBuf) -> Option<Vec<PathBuf>> {
+    let output = std::process::Command::new("git")
+        .args(&["ls-files", "--cached", "--others", "--exclude-standard"])
+        .current_dir(repository_path)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let files: Vec<PathBuf> = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter(|line| !line.is_empty())
+        .map(|line| repository_path.join(line.trim()))
+        .collect();
+    if files.is_empty() { None } else { Some(files) }
+}
+
+/// Cross-platform libgit2 fallback.
+/// Reads tracked files from the git index (cheap — only reads .git/index, no per-file stat),
+/// then makes a second pass for untracked files only (avoiding stat on every tracked file).
+fn git_ls_files_libgit2(repository_path: &PathBuf) -> Option<Vec<PathBuf>> {
     let repository = Repository::open(repository_path)
         .map_err(|e| error!("Failed to open repository: {}", e)).ok()?;
 
-    let statuses = repository.statuses(Some(
-        &mut status_options(true, git2::StatusShow::IndexAndWorkdir)))
-        .map_err(|e| error!("Failed to get statuses: {}", e)).ok()?;
+    let mut files: Vec<PathBuf> = Vec::new();
 
-    let mut files = Vec::new();
-    for entry in statuses.iter() {
-        let path = String::from_utf8_lossy(entry.path_bytes()).to_string();
-        files.push(repository_path.join(path));
+    // Pass 1: enumerate tracked files via the git index (no workdir stat required).
+    if let Ok(index) = repository.index() {
+        for entry in index.iter() {
+            let path = String::from_utf8_lossy(&entry.path).to_string();
+            if !path.ends_with('/') {
+                files.push(repository_path.join(&path));
+            }
+        }
+    } else {
+        // If we can't open the index fall back to the original (slow) approach.
+        let statuses = repository.statuses(Some(
+            &mut status_options(true, git2::StatusShow::IndexAndWorkdir)))
+            .map_err(|e| error!("Failed to get statuses: {}", e)).ok()?;
+        for entry in statuses.iter() {
+            let path = String::from_utf8_lossy(entry.path_bytes()).to_string();
+            files.push(repository_path.join(path));
+        }
+        return if !files.is_empty() { Some(files) } else { None };
     }
+
+    // Pass 2: collect untracked (new) files without include_unmodified — avoids
+    // stat-ing every tracked file.
+    let mut untracked_opts = git2::StatusOptions::new();
+    untracked_opts
+        .include_untracked(true)
+        .recurse_untracked_dirs(true)
+        .include_ignored(false)
+        .include_unmodified(false)
+        .include_unreadable(false)
+        .show(git2::StatusShow::Workdir);
+    if let Ok(statuses) = repository.statuses(Some(&mut untracked_opts)) {
+        for entry in statuses.iter() {
+            if entry.status().is_wt_new() {
+                let path = String::from_utf8_lossy(entry.path_bytes()).to_string();
+                files.push(repository_path.join(path));
+            }
+        }
+    }
+
     if !files.is_empty() { Some(files) } else { None }
 }
 

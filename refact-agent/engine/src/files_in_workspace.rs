@@ -13,7 +13,7 @@ use walkdir::WalkDir;
 use which::which;
 use tracing::info;
 
-use crate::files_correction::{canonical_path, CommandSimplifiedDirExt};
+use crate::files_correction::{canonical_path, fast_normalize_path, CommandSimplifiedDirExt};
 use crate::git::operations::git_ls_files;
 use crate::global_context::{get_app_searchable_id, GlobalContext};
 use crate::integrations::running_integrations::load_integrations;
@@ -429,7 +429,9 @@ async fn _ls_files_under_version_control_recursive(
     ignore_size_thresholds: bool,
     check_blocklist: bool,
 ) {
-    let mut candidates: Vec<PathBuf> = vec![crate::files_correction::canonical_path(&path.to_string_lossy().to_string())];
+    // Use fast_normalize_path: workspace folders are always absolute, so we only need
+    // to strip any \\?\ UNC prefix on Windows — no filesystem stat required.
+    let mut candidates: Vec<PathBuf> = vec![fast_normalize_path(&path)];
     let mut rejected_reasons: HashMap<String, usize> = HashMap::new();
     let mut blocklisted_dirs_cnt: usize = 0;
     while !candidates.is_empty() {
@@ -492,10 +494,12 @@ async fn _ls_files_under_version_control_recursive(
                     blocklisted_dirs_cnt += 1;
                     continue;
                 }
+                // WalkDir entries are always absolute; fast_normalize_path strips \\?\ on
+                // Windows without making any filesystem calls, saving one stat per entry.
                 let new_paths: Vec<PathBuf> = WalkDir::new(checkme.clone()).max_depth(1)
                     .into_iter()
                     .filter_map(|e| e.ok())
-                    .map(|e| crate::files_correction::canonical_path(&e.path().to_string_lossy().to_string()))
+                    .map(|e| fast_normalize_path(e.path()))
                     .filter(|e| e != &checkme)
                     .collect();
                 candidates.extend(new_paths);
@@ -660,7 +664,11 @@ pub async fn on_workspaces_init(gcx: Arc<ARwLock<GlobalContext>>) -> i32
         gcx.write().await.app_searchable_id = get_app_searchable_id(&folders);
         crate::cloud::threads_sub::trigger_threads_subscription_restart(gcx.clone()).await;
     }
-    watcher_init(gcx.clone()).await;
+    // Spawn watcher_init in the background — on Windows, RecommendedWatcher internally
+    // enumerates every subdirectory with ReadDirectoryChangesW, which blocks for seconds
+    // on large workspaces.  File events missed during the brief init window are acceptable
+    // because enqueue_all_files_from_workspace_folders() immediately below does a full scan.
+    tokio::spawn(watcher_init(gcx.clone()));
     let files_enqueued = enqueue_all_files_from_workspace_folders(gcx.clone(), false, false).await;
 
     // enqueue shadow repos initialization

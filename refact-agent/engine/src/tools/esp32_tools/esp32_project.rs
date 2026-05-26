@@ -33,12 +33,12 @@ impl Tool for ESP32Project {
             },
             agentic: true,
             experimental: false,
-            description: "Manage ESP32 projects. Operations: 'create' (create new project from template/example), 'list_examples' (list available IDF examples), 'search_examples' (semantic search over IDF examples via VecDB), 'validate' (validate project structure). IMPORTANT: Do NOT guess the template path — wrong guesses waste turns. Real IDF v5.5 example paths: 'get-started/blink', 'get-started/hello_world', 'provisioning/wifi_prov_mgr', 'wifi/getting_started/station', 'bluetooth/bluedroid/ble/gatt_server', 'mqtt/tcp'. If unsure of the exact path, use list_examples or search_examples BEFORE calling create. Do NOT fall back to shell commands (cp, mkdir, etc.) to create projects manually.".to_string(),
+            description: "Manage ESP32 projects. Operations: 'create' (create new project from template/example), 'list_examples' (list available IDF examples), 'validate' (validate project structure). IMPORTANT: Do NOT guess the template path — wrong guesses waste turns. Real IDF v5.5 example paths: 'get-started/blink', 'get-started/hello_world', 'provisioning/wifi_prov_mgr', 'wifi/getting_started/station', 'bluetooth/bluedroid/ble/gatt_server', 'mqtt/tcp'. If unsure of the exact path, use list_examples with a 'filter' keyword (e.g., filter: 'wifi') BEFORE calling create. Do NOT fall back to shell commands (cp, mkdir, etc.) to create projects manually.".to_string(),
             parameters: vec![
                 ToolParam {
                     name: "operation".to_string(),
                     param_type: "string".to_string(),
-                    description: "Operation: 'create' (create new project from template/example), 'list_examples' (list available IDF examples), 'search_examples' (semantic search), 'validate' (validate project structure)".to_string(),
+                    description: "Operation: 'create' (create new project from template/example), 'list_examples' (list available IDF examples with optional filter keyword), 'validate' (validate project structure)".to_string(),
                 },
                 ToolParam {
                     name: "project_name".to_string(),
@@ -65,16 +65,7 @@ impl Tool for ESP32Project {
                     param_type: "string".to_string(),
                     description: "Filter examples by keyword (for 'list_examples')".to_string(),
                 },
-                ToolParam {
-                    name: "query".to_string(),
-                    param_type: "string".to_string(),
-                    description: "Search query for semantic search (for 'search_examples' operation). Example: 'WiFi station mode connection'".to_string(),
-                },
-                ToolParam {
-                    name: "top_n".to_string(),
-                    param_type: "integer".to_string(),
-                    description: "Number of results to return (for 'search_examples', default: 10)".to_string(),
-                },
+
             ],
             parameters_required: vec!["operation".to_string()],
         }
@@ -113,9 +104,11 @@ impl Tool for ESP32Project {
                 .await
                 .map(|o| (o, vec![])),
             "list_examples" => self.list_examples(&config, args).await.map(|o| (o, vec![])),
-            "search_examples" => self.search_examples(&config, ccx.clone(), args).await.map(|(o, f)| (o, f)),
+            "search_examples" => return Err(
+                "search_examples requires VecDB which is not available. Use 'list_examples' with a 'filter' parameter instead (e.g., filter: 'wifi').".to_string()
+            ),
             "validate" => self.validate_project(&config, args).await.map(|o| (o, vec![])),
-            _ => return Err(format!("Unknown operation: '{}'. Valid operations: 'create', 'list_examples', 'search_examples', 'validate'.", operation)),
+            _ => return Err(format!("Unknown operation: '{}'. Valid operations: 'create', 'list_examples', 'validate'.", operation)),
         };
 
         match &result {
@@ -157,7 +150,6 @@ impl Tool for ESP32Project {
     }
 
     fn tool_depends_on(&self) -> Vec<String> {
-        // VecDB is optional — only needed for search_examples; checked at runtime.
         vec!["esp32".to_string()]
     }
 }

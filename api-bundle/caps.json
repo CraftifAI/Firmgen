@@ -6,7 +6,7 @@
   "tokenizer_path_template": "https://huggingface.co/$MODEL/resolve/main/tokenizer.json",
   "code_completion_default_model": "gpt-5",
   "code_completion_n_ctx": 2000000,
-  "code_chat_default_model": "gpt-5",
+  "code_chat_default_model": "gpt-5.2",
   "models_dict_patch": {
     "gpt-3.5-turbo": {
       "n_ctx": 16000,
@@ -66,25 +66,14 @@
     }
   },
   "chat_light_model": "gpt-4o-mini",
-  "chat_thinking_model": "gpt-5",
+  "chat_thinking_model": "gpt-5.2",
   "default_embeddings_model": "text-embedding-3-small",
   "endpoint_embeddings_template": "/v1/embeddings",
   "endpoint_embeddings_style": "openai",
   "size_embeddings": 1536,
   "running_models": [
     "gpt-5",
-    "gpt-5-mini",
-    "gpt-5.1",
-    "gpt-5.2",
-    "gpt-5-codex",
-    "gpt-5.2-codex",
-    "gpt-5.3-codex",
-    "gpt-5.3-codex-spark",
-    "gpt-5.1-codex-mini",
-    "gpt-4.1",
-    "gpt-4.1-mini",
-    "gpt-4o",
-    "gpt-4o-mini"
+    "gpt-5.2"
   ],
   "support_metadata": true,
   "metadata": {

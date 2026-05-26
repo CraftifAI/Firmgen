@@ -17,7 +17,7 @@
 .chatForm__form :global(.rt-TextAreaRoot) {
   background-color: transparent;
   min-height: unset;
-  max-height: 72px;
+  max-height: min(50vh,360px);
 }
 .composerPromptSendButton {
   background: rgba(62, 198, 255, 0.08);
@@ -114,6 +114,11 @@
 .composerToolbar {
   border-top: 1px solid color-mix(in srgb, var(--palette-surface-border) 40%, transparent);
   background: var(--surface-overlay);
+}
+
+.composerModelTriggerLocked :global(.rt-SelectIcon) {
+  display: none;
+  opacity: 0.5;
 }
 
 .composerActions {

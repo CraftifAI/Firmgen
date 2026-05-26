@@ -8,10 +8,70 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.widget import Widget
 from textual.widgets import TextArea, Static, Button
-from textual.containers import Horizontal
+from textual.containers import Horizontal, Vertical
 from textual.message import Message
 from textual import events
 from rich.text import Text
+
+
+class CompletionPopup(Static):
+    """Dropdown showing @-command completion suggestions."""
+
+    DEFAULT_CSS = """
+    CompletionPopup {
+        height: auto;
+        max-height: 8;
+        background: $surface;
+        border: solid $primary-lighten-2;
+        padding: 0 1;
+        margin: 0 3 0 3;
+        display: none;
+    }
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._items: List[str] = []
+        self._selected: int = 0
+
+    def set_items(self, items: List[str]):
+        self._items = items[:8]
+        self._selected = 0
+        if items:
+            self.display = True
+            self._render_list()
+        else:
+            self.display = False
+            self.update("")
+
+    def select_next(self):
+        if self._items:
+            self._selected = (self._selected + 1) % len(self._items)
+            self._render_list()
+
+    def select_prev(self):
+        if self._items:
+            self._selected = (self._selected - 1) % len(self._items)
+            self._render_list()
+
+    def get_selected(self) -> Optional[str]:
+        if 0 <= self._selected < len(self._items):
+            return self._items[self._selected]
+        return None
+
+    def hide(self):
+        self.display = False
+        self._items = []
+        self.update("")
+
+    def _render_list(self):
+        lines = []
+        for i, item in enumerate(self._items):
+            if i == self._selected:
+                lines.append(f"[bold cyan]▸ {item}[/]")
+            else:
+                lines.append(f"  [dim]{item}[/]")
+        self.update(Text.from_markup("\n".join(lines)))
 
 
 class ChatTextArea(TextArea):
@@ -61,12 +121,12 @@ class ChatTextArea(TextArea):
 
 
 class ChatInput(Widget):
-    """Multi-line chat input with Enter to send."""
+    """Multi-line chat input with Enter to send, @-completions, and character count."""
 
     DEFAULT_CSS = """
     ChatInput {
         height: auto;
-        max-height: 4;
+        max-height: 12;
         dock: bottom;
     }
     """
@@ -80,19 +140,26 @@ class ChatInput(Widget):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._completion_fn: Optional[Callable] = None
+        self._completion_popup: Optional[CompletionPopup] = None
 
     def compose(self) -> ComposeResult:
+        yield CompletionPopup(id="completion-popup")
         yield Horizontal(
-            Static(Text.from_markup("[bold cyan]>[/] "), classes="input-prompt"),
+            Static(Text.from_markup("[bold cyan]❯[/] "), classes="input-prompt"),
             ChatTextArea(id="chat-textarea", language=None),
             Button("Send", id="send-btn", classes="send-button", variant="primary"),
             classes="input-row",
+        )
+        yield Static(
+            Text.from_markup("[dim]Enter: send • Shift+Enter: newline • Esc: cancel[/]"),
+            classes="input-hints",
         )
 
     def on_mount(self):
         ta = self.query_one("#chat-textarea", ChatTextArea)
         ta.show_line_numbers = False
         ta.focus()
+        self._completion_popup = self.query_one("#completion-popup", CompletionPopup)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Send button clicked — same logic as Enter."""

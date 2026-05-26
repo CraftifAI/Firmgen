@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { CheckIcon, Cross1Icon } from "@radix-ui/react-icons";
+import { CheckIcon } from "@radix-ui/react-icons";
 import { LightningBoltIcon } from "@radix-ui/react-icons";
 import * as Collapsible from "@radix-ui/react-collapsible";
 import { ChevronDownIcon } from "@radix-ui/react-icons";
@@ -9,7 +9,7 @@ import styles from "./ProgressBar.module.css";
 import { PipelineStage } from "../../hooks/useWorkflowStatus";
 import type { ProgressEventDto } from "../../hooks/useProgress";
 
-interface ProgressBarProps {
+export interface ProgressBarProps {
   currentStage: PipelineStage;
   isStreaming?: boolean;
   hasError?: boolean;
@@ -50,13 +50,64 @@ function getEventStatusDisplay(status: string): "running" | "completed" | "error
     case "success":
     case "cached":
     case "skipped":
-    case "partial_success":
       return "completed";
+    // partial_success: tool ran but had issues — show as error, not silent completion
+    case "partial_success":
     case "failure":
       return "error";
     default:
       return "pending";
   }
+}
+
+const NODE_ORDER: ProgressEventDto["node"][] = [
+  "planning",
+  "generation",
+  "compiling",
+  "flashing",
+  "monitoring",
+];
+
+function nodeOrdinal(node: ProgressEventDto["node"]): number {
+  const idx = NODE_ORDER.indexOf(node);
+  return idx >= 0 ? idx : 0;
+}
+
+function latestEventForNode(
+  events: ProgressEventDto[],
+  node: ProgressEventDto["node"],
+): ProgressEventDto | undefined {
+  return [...events].reverse().find((evt) => evt.node === node);
+}
+
+/**
+ * Determine which step index should be treated as the "current" one.
+ *
+ * Priority:
+ * 1. The most recent currently-running event's node (live activity).
+ * 2. currentStage as reported by the backend (authoritative after each poll).
+ *
+ * We intentionally do NOT use "max historical ordinal" — that causes the
+ * indicator to stick at the highest stage ever reached (e.g. monitoring)
+ * even when a later detect/flash is running at a lower stage.
+ */
+function deriveHighlightIndex(
+  events: ProgressEventDto[],
+  currentStage: PipelineStage,
+): number {
+  // Walk events newest-first and find the first still-running one.
+  for (let i = events.length - 1; i >= 0; i--) {
+    if (getEventStatusDisplay(events[i].status) === "running") {
+      const activeOrdinal = nodeOrdinal(events[i].node);
+      const stageIdx = STAGES.findIndex((s) => s.id === currentStage);
+      // Take the larger of the two so the indicator never goes below what the
+      // backend has authoritatively confirmed as current.
+      return Math.max(activeOrdinal, stageIdx >= 0 ? stageIdx : 0);
+    }
+  }
+  // No live event — trust the backend stage entirely.
+  const stageIdx = STAGES.findIndex((s) => s.id === currentStage);
+  return stageIdx >= 0 ? stageIdx : 0;
 }
 
 export const ProgressBar: React.FC<ProgressBarProps> = ({
@@ -68,36 +119,42 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
   events = [],
 }) => {
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const currentIndex = STAGES.findIndex((s) => s.id === currentStage);
+  const highlightIndex = deriveHighlightIndex(events, currentStage);
   const hasAnyEvents = events.length > 0;
-  const currentNode = stageToNode(currentStage);
-
-  const latestCurrentNodeEvent = [...events]
-    .reverse()
-    .find((evt) => evt.node === currentNode);
-
-  const currentNodeIsRunning =
-    latestCurrentNodeEvent?.status === "ongoing" ||
-    latestCurrentNodeEvent?.status === "pending";
-  const currentNodeHasError =
-    latestCurrentNodeEvent?.status === "failure" ||
-    latestCurrentNodeEvent?.status === "partial_success";
-  const currentNodeCompleted =
-    latestCurrentNodeEvent?.status === "success" ||
-    latestCurrentNodeEvent?.status === "cached" ||
-    latestCurrentNodeEvent?.status === "skipped";
 
   const getStepState = (index: number): string => {
-    if (index < currentIndex) return "completed";
-    if (index === currentIndex) {
+    const stageId = STAGES[index]?.id;
+    if (!stageId) return "pending";
+
+    const node = stageToNode(stageId);
+
+    // ── Highest priority: any running event for THIS exact node ──────────
+    // Fires regardless of highlightIndex so "detect" at flashing lights the
+    // flashing step even if monitoring was previously completed.
+    const hasRunning = events.some(
+      (e) => e.node === node && getEventStatusDisplay(e.status) === "running",
+    );
+    if (hasRunning) return "running";
+
+    // ── A node is completed ONLY when it has actual success events ────────
+    // We never treat "index < highlightIndex" as automatically completed —
+    // that was causing planning/coding/building to light up green when the
+    // user jumps straight to detect/flashing without going through them.
+    const hasCompleted = events.some(
+      (e) => e.node === node && getEventStatusDisplay(e.status) === "completed",
+    );
+    if (hasCompleted) return "completed";
+
+    // ── Current highlighted stage (from backend current_node) ────────────
+    if (index === highlightIndex) {
       if (isDebugging) return "debugging";
-      if (currentNodeHasError) return "error";
-      if (currentNodeIsRunning || isStreaming) return "running";
-      if (currentNodeCompleted) return "completed";
-      if (!hasAnyEvents) return "pending";
-      if (hasError) return "error";
-      return "completed";
+      // Polling lag fallback: show spinner while the chat is streaming but
+      // no event has arrived yet for this node.
+      if (isStreaming) return "running";
+      return "pending";
     }
+
+    // ── Future stage (or past stage with no recorded events) ─────────────
     return "pending";
   };
 
@@ -116,13 +173,6 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
       return (
         <div className={styles.checkmarkCircle}>
           <CompletedIcon className={styles.checkmark} />
-        </div>
-      );
-    }
-    if (state === "error") {
-      return (
-        <div className={styles.errorCircle}>
-          <Cross1Icon className={styles.errorIcon} />
         </div>
       );
     }
@@ -149,7 +199,7 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
       <div className={styles.track}>
         {STAGES.map((stage, index) => {
           const state = getStepState(index);
-          const isCurrentAndDebugging = index === currentIndex && isDebugging;
+          const isCurrentAndDebugging = index === highlightIndex && isDebugging;
           const displayLabel = isCurrentAndDebugging ? stage.debugLabel : stage.label;
           return (
             <React.Fragment key={stage.id}>
@@ -211,7 +261,7 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
                         <CheckIcon className={styles.statusIcon} />
                       )}
                       {displayStatus === "error" && (
-                        <Cross1Icon className={styles.statusIconError} />
+                        <span className={styles.statusIconError}>✕</span>
                       )}
                       {displayStatus === "pending" && (
                         <span className={styles.pendingDot} />

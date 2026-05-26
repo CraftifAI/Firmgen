@@ -1,7 +1,28 @@
 import { RootState } from "../../app/store";
 import { CAPS_URL } from "./consts";
 import { createApi, fetchBaseQuery } from "@reduxjs/toolkit/query/react";
+import type { FetchBaseQueryError } from "@reduxjs/toolkit/query";
 import { CodeChatModel, CodeCompletionModel, EmbeddingModel } from "./models";
+
+function delay(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+/** True if another fetch might succeed (LSP warming up, network blip). */
+function isTransientCapsBaseQueryError(error: FetchBaseQueryError): boolean {
+  if (error.status === "FETCH_ERROR" || error.status === "TIMEOUT_ERROR") {
+    return true;
+  }
+  if (error.status === "PARSING_ERROR") {
+    return true;
+  }
+  if (typeof error.status === "number") {
+    if (error.status >= 500) return true;
+    if (error.status === 429 || error.status === 408) return true;
+    return false;
+  }
+  return false;
+}
 
 export const capsApi = createApi({
   reducerPath: "caps",
@@ -21,26 +42,44 @@ export const capsApi = createApi({
         const port = state.config.lspPort as unknown as number;
         const url = `http://127.0.0.1:${port}${CAPS_URL}`;
 
-        const result = await baseQuery({
-          url,
-          credentials: "same-origin",
-          redirect: "follow",
-        });
-        if (result.error) {
-          return { error: result.error };
-        }
-        if (!isCapsResponse(result.data)) {
-          return {
-            meta: result.meta,
-            error: {
-              error: "Invalid response from caps",
-              data: result.data,
-              status: "CUSTOM_ERROR",
-            },
-          };
+        // Enough to cover LSP restart / brief "connection refused" without long UI stalls.
+        const maxAttempts = 8;
+        let lastError: FetchBaseQueryError | undefined;
+
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+          const result = await baseQuery({
+            url,
+            credentials: "same-origin",
+            redirect: "follow",
+          });
+
+          if (!result.error) {
+            if (!isCapsResponse(result.data)) {
+              return {
+                meta: result.meta,
+                error: {
+                  error: "Invalid response from caps",
+                  data: result.data,
+                  status: "CUSTOM_ERROR",
+                },
+              };
+            }
+            return { data: result.data };
+          }
+
+          lastError = result.error;
+          const auth =
+            lastError.status === 401 || lastError.status === 403;
+          if (auth || !isTransientCapsBaseQueryError(lastError)) {
+            return { error: lastError };
+          }
+          if (attempt < maxAttempts) {
+            const backoffMs = Math.min(1200, 100 * attempt);
+            await delay(backoffMs);
+          }
         }
 
-        return { data: result.data };
+        return { error: lastError! };
       },
     }),
   }),

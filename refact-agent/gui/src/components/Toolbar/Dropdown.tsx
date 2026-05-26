@@ -63,11 +63,11 @@ type DropdownProps = {
 function linkForBugReports(host: Config["host"]): string {
   switch (host) {
     case "vscode":
-      return "https://github.com/smallcloudai/refact-vscode/issues";
+      return "https://www.youtube.com/";
     case "jetbrains":
-      return "https://github.com/smallcloudai/refact-intellij/issues";
+      return "https://www.youtube.com/";
     default:
-      return "https://github.com/smallcloudai/refact-chat-js/issues";
+      return "https://www.youtube.com/";
   }
 }
 
@@ -307,7 +307,7 @@ export const Dropdown: React.FC<DropdownProps> = ({
             </Flex>
           </DropdownMenu.Label>
         )}
-        <Flex direction="column" gap="2" mt="2" mx="2">
+        {/* <Flex direction="column" gap="2" mt="2" mx="2">
           {/* TODO: uncomment when plans are retrievable from flexus */}
           {/* {user.data && user.data.inference === "FREE" && (
             <Button
@@ -317,7 +317,7 @@ export const Dropdown: React.FC<DropdownProps> = ({
             >
               Upgrade to PRO
             </Button>
-          )} */}
+          )} 
 
           <Button
             onClick={(event) => {
@@ -335,9 +335,8 @@ export const Dropdown: React.FC<DropdownProps> = ({
               />
             </Flex>
           </Button>
-        </Flex>
+        </Flex> */}
 
-        <DropdownMenu.Separator />
 
         <Flex direction="column" gap="2" mb="1" mx="2">
           {isWorkspaceSelectionSkipped && (
@@ -355,7 +354,7 @@ export const Dropdown: React.FC<DropdownProps> = ({
             </Button>
           )}
         </Flex>
-
+{/* 
         <DropdownMenu.Item onSelect={() => handleNavigation("integrations")}>
           <PuzzleIcon /> Set up Agent Integrations
         </DropdownMenu.Item>
@@ -396,7 +395,7 @@ export const Dropdown: React.FC<DropdownProps> = ({
           }}
         >
           Edit privacy.yaml
-        </DropdownMenu.Item>
+        </DropdownMenu.Item> */}
 
         <DropdownMenu.Separator />
 
@@ -413,9 +412,9 @@ export const Dropdown: React.FC<DropdownProps> = ({
           Report a bug
         </DropdownMenu.Item>
 
-        <DropdownMenu.Item onSelect={() => handleNavigation("fim")}>
+        {/* <DropdownMenu.Item onSelect={() => handleNavigation("fim")}>
           Fill-in-the-middle Context
-        </DropdownMenu.Item>
+        </DropdownMenu.Item> */}
 
         <DropdownMenu.Item onSelect={() => handleNavigation("stats")}>
           Your Stats

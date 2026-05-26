@@ -70,6 +70,16 @@ function keepMonotonicProgress(
 ): ProgressSessionDto {
   if (!previous) return next;
 
+  // New tool activity — trust the server (e.g. detect at flashing after monitoring).
+  if (
+    next.events.length > previous.events.length ||
+    next.current_node !== previous.current_node ||
+    next.has_active_run ||
+    next.is_debugging
+  ) {
+    return next;
+  }
+
   const prevOrdinal = getNodeOrdinal(previous.current_node);
   const nextOrdinal = getNodeOrdinal(next.current_node);
   if (nextOrdinal >= prevOrdinal) {
@@ -117,6 +127,9 @@ interface UseProgressReturn {
   isLoading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
+  /** Call when the user submits a new message so the bar resets before new
+   *  tool events arrive, rather than showing stale data from the previous run. */
+  resetForNewRun: () => void;
 }
 
 export function useProgress(options: UseProgressOptions = {}): UseProgressReturn {
@@ -185,6 +198,21 @@ export function useProgress(options: UseProgressOptions = {}): UseProgressReturn
     return () => window.clearInterval(timer);
   }, [chatId, pollingInterval, refresh]);
 
+  // Clear the persisted localStorage entry and wipe progress state so the
+  // bar shows empty circles when the user starts a new agent turn.
+  // We do NOT immediately blank the bar mid-render — we let the next poll
+  // return fresh data so the transition is smooth rather than jarring.
+  const resetForNewRun = useCallback(() => {
+    if (chatId) {
+      try {
+        window.localStorage.removeItem(toStorageKey(chatId));
+      } catch {
+        // ignore storage errors
+      }
+    }
+    setProgress(null);
+  }, [chatId]);
+
   const currentStage = progress ? nodeToStage(progress.current_node) : "PLANNING";
   const hasError = progress?.has_error ?? false;
   const isStreaming = progress?.has_active_run ?? false;
@@ -201,5 +229,6 @@ export function useProgress(options: UseProgressOptions = {}): UseProgressReturn
     isLoading,
     error: fetchError,
     refresh,
+    resetForNewRun,
   };
 }

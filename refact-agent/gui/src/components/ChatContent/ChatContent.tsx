@@ -10,7 +10,7 @@ import {
 } from "../../services/refact";
 import { UserInput } from "./UserInput";
 import { ScrollArea, ScrollAreaWithAnchor } from "../ScrollArea";
-import { Flex, Container, Button, Box } from "@radix-ui/themes";
+import { Flex, Container, Button, Box, Text } from "@radix-ui/themes";
 import styles from "./ChatContent.module.css";
 import { ContextFiles } from "./ContextFiles";
 import { AssistantInput } from "./AssistantInput";
@@ -55,6 +55,11 @@ export const ChatContent: React.FC<ChatContentProps> = ({
   const { shouldShow } = useUsageCounter();
   const isConfig = thread.mode === "CONFIGURE";
   const isWaiting = useAppSelector(selectIsWaiting);
+  const agentIsWorking = useMemo(
+    () =>
+      (isWaiting || isStreaming) && !pauseReasonsWithPause.pause,
+    [isWaiting, isStreaming, pauseReasonsWithPause.pause],
+  );
   const [sendTelemetryEvent] =
     telemetryApi.useLazySendTelemetryChatEventQuery();
   const integrationMeta = useAppSelector(selectIntegration);
@@ -128,7 +133,24 @@ export const ChatContent: React.FC<ChatContentProps> = ({
             <PlaceHolderText />
           </Flex>
         )}
-        {renderMessages(messages, onRetryWrapper, isWaiting)}
+        {renderMessages(messages, onRetryWrapper)}
+        {agentIsWorking && (
+          <Flex
+            className={styles.agentWorkingBelowBlob}
+            aria-live="polite"
+            aria-busy="true"
+            aria-label="processing, please wait"
+          >
+            <Text as="div" size="1" className={styles.workingLine}>
+              <span className={styles.workingVerb}>processing</span>
+              <span className={styles.animatedDots} aria-hidden="true">
+                <span className={styles.animatedDot} />
+                <span className={styles.animatedDot} />
+                <span className={styles.animatedDot} />
+              </span>
+            </Text>
+          </Flex>
+        )}
         <Container>
           <UncommittedChangesWarning />
         </Container>
@@ -153,7 +175,7 @@ export const ChatContent: React.FC<ChatContentProps> = ({
       >
         <ScrollArea scrollbars="horizontal">
           <Flex align="start" gap="3" pb="2">
-            {(isWaiting || isStreaming) && !pauseReasonsWithPause.pause && (
+            {/* {(isWaiting || isStreaming) && !pauseReasonsWithPause.pause && (
               <Button
                 // ml="auto"
                 size="2"
@@ -163,7 +185,7 @@ export const ChatContent: React.FC<ChatContentProps> = ({
               >
                 Stop
               </Button>
-            )}
+            )} */}
             {shouldConfigButtonBeVisible && (
               <Button
                 // ml="auto"
@@ -188,20 +210,19 @@ ChatContent.displayName = "ChatContent";
 function renderMessages(
   messages: ChatMessages,
   onRetry: (index: number, question: UserMessage["content"]) => void,
-  waiting: boolean,
   memo: React.ReactNode[] = [],
   index = 0,
 ) {
   if (messages.length === 0) return memo;
   const [head, ...tail] = messages;
   if (head.role === "tool") {
-    return renderMessages(tail, onRetry, waiting, memo, index + 1);
+    return renderMessages(tail, onRetry, memo, index + 1);
   }
 
   if (head.role === "plain_text") {
     const key = "plain-text-" + index;
     const nextMemo = [...memo, <PlainText key={key}>{head.content}</PlainText>];
-    return renderMessages(tail, onRetry, waiting, nextMemo, index + 1);
+    return renderMessages(tail, onRetry, nextMemo, index + 1);
   }
 
   if (head.role === "assistant") {
@@ -218,7 +239,7 @@ function renderMessages(
       />,
     ];
 
-    return renderMessages(tail, onRetry, waiting, nextMemo, index + 1);
+    return renderMessages(tail, onRetry, nextMemo, index + 1);
   }
 
   if (head.role === "user") {
@@ -238,13 +259,13 @@ function renderMessages(
         {head.content}
       </UserInput>,
     ];
-    return renderMessages(tail, onRetry, waiting, nextMemo, index + 1);
+    return renderMessages(tail, onRetry, nextMemo, index + 1);
   }
 
   if (isChatContextFileMessage(head)) {
     const key = "context-file-" + index;
     const nextMemo = [...memo, <ContextFiles key={key} files={head.content} />];
-    return renderMessages(tail, onRetry, waiting, nextMemo, index + 1);
+    return renderMessages(tail, onRetry, nextMemo, index + 1);
   }
 
   if (isDiffMessage(head)) {
@@ -258,14 +279,8 @@ function renderMessages(
 
     const nextMemo = [...memo, <GroupedDiffs key={key} diffs={diffMessages} />];
 
-    return renderMessages(
-      nextTail,
-      onRetry,
-      waiting,
-      nextMemo,
-      index + diffMessages.length,
-    );
+    return renderMessages(nextTail, onRetry, nextMemo, index + diffMessages.length);
   }
 
-  return renderMessages(tail, onRetry, waiting, memo, index + 1);
+  return renderMessages(tail, onRetry, memo, index + 1);
 }

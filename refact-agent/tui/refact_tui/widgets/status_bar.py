@@ -29,17 +29,21 @@ class StatusBar(Widget):
     vecdb_status: reactive[str] = reactive("")
     usage_text: reactive[str] = reactive("")
     project_path: reactive[str] = reactive("")
+    chat_mode: reactive[str] = reactive("AGENT")
 
     def render(self):
         parts = []
 
         if self.model_name:
-            parts.append(f"[bold]{self.model_name}[/]")
+            parts.append(f"[bold cyan]{self.model_name}[/]")
 
         if self.is_streaming:
-            parts.append("[yellow bold]streaming...[/]")
+            parts.append("[yellow bold]⏳ streaming…[/]")
         else:
-            parts.append("[green]ready[/]")
+            parts.append("[green]● ready[/]")
+
+        if self.chat_mode:
+            parts.append(f"[dim]{self.chat_mode}[/]")
 
         if self.usage_text:
             parts.append(f"[dim]{self.usage_text}[/]")
@@ -53,14 +57,18 @@ class StatusBar(Widget):
         if self.project_path:
             path_short = self.project_path
             if len(path_short) > 30:
-                path_short = "..." + path_short[-27:]
+                path_short = "…" + path_short[-27:]
             parts.append(f"[dim]{path_short}[/]")
 
         return Text.from_markup(" │ ".join(parts))
 
     def update_usage(self, usage: Optional[Usage]):
         if usage:
-            self.usage_text = f"tokens: {usage.prompt_tokens}+{usage.completion_tokens}"
+            total = usage.prompt_tokens + usage.completion_tokens
+            cache_info = ""
+            if usage.cache_read_input_tokens > 0:
+                cache_info = f" cache:{usage.cache_read_input_tokens}"
+            self.usage_text = f"tokens: {total:,}{cache_info}"
         else:
             self.usage_text = ""
 

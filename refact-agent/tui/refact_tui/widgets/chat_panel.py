@@ -74,12 +74,57 @@ class ActionButtonsWidget(Widget):
         self.post_message(self.ButtonAction(label))
 
 
+class ThinkingBlockWidget(Widget):
+    """Renders a collapsible thinking block from reasoning models."""
+
+    DEFAULT_CSS = """
+    ThinkingBlockWidget {
+        height: auto;
+        margin: 0 0 0 2;
+    }
+    ThinkingBlockWidget .thinking-content {
+        color: $text-muted;
+    }
+    """
+
+    def __init__(self, blocks: List[dict], **kwargs):
+        super().__init__(**kwargs)
+        self._blocks = blocks
+
+    def compose(self) -> ComposeResult:
+        total_text = ""
+        for b in self._blocks:
+            if b.get("type") == "thinking" and b.get("thinking"):
+                total_text += b["thinking"]
+
+        if total_text:
+            preview = total_text[:120].replace("\n", " ")
+            if len(total_text) > 120:
+                preview += "…"
+            yield Collapsible(
+                Static(total_text, classes="thinking-content"),
+                title=f"💭 Thinking: {preview}",
+                collapsed=True,
+                classes="thinking-collapsible",
+            )
+
 
 class ToolCallWidget(Widget):
     """Displays a tool call with its name, arguments, and optional expandable result."""
 
     DEFAULT_CSS = """
-    ToolCallWidget { height: auto; margin: 0 0 0 2; }
+    ToolCallWidget {
+        height: auto;
+        margin: 0 0 0 2;
+        padding: 0 0 0 1;
+        border-left: thick $warning;
+    }
+    .tool-call-header { height: auto; }
+    .tool-result-content {
+        height: auto;
+        max-height: 20;
+        color: $text-muted;
+    }
     """
 
     def __init__(
@@ -107,24 +152,24 @@ class ToolCallWidget(Widget):
             args_str = str(raw_args)[:100]
 
         if len(args_str) > 100:
-            args_str = args_str[:97] + "..."
+            args_str = args_str[:97] + "…"
 
         if self.failed:
-            status = "[red bold]FAILED[/]"
+            status = "[red bold]✗ FAILED[/]"
         elif self.result is not None:
-            status = "[green bold]OK[/]"
+            status = "[green bold]✓ OK[/]"
         else:
-            status = "[yellow bold]PENDING[/]"
+            status = "[yellow bold]⏳ PENDING[/]"
 
         yield Static(
-            Text.from_markup(f"  [cyan bold]tool[/] {status} [bold]{name}[/]({args_str})"),
+            Text.from_markup(f"  [cyan bold]🔧[/] {status} [bold]{name}[/]({args_str})"),
             classes="tool-call-header",
         )
 
         if self.result and len(self.result) > 0:
-            preview = self.result[:300]
-            if len(self.result) > 300:
-                preview += f"\n... ({len(self.result)} chars total)"
+            preview = self.result[:500]
+            if len(self.result) > 500:
+                preview += f"\n… ({len(self.result)} chars total)"
             yield Collapsible(
                 Static(preview, classes="tool-result-content"),
                 title="Result",
@@ -187,7 +232,7 @@ class SubchatWidget(Widget):
 
         yield Collapsible(
             Static(summary or "[dim]no content[/]"),
-            title=f"subchat {self.subchat_id}",
+            title=f"↳ subchat {self.subchat_id}",
             collapsed=True,
         )
 
@@ -209,7 +254,7 @@ class MessageWidget(Widget):
         content = self.msg.content
 
         if role == "user":
-            yield Static(Text.from_markup(f"\n[bold blue]You[/]"), classes="msg-role")
+            yield Static(Text.from_markup(f"\n[bold on dark_blue] 👤 You [/]"), classes="msg-role")
             if isinstance(content, str):
                 yield Static(content, classes="msg-content user-msg")
             elif isinstance(content, list):
@@ -223,12 +268,19 @@ class MessageWidget(Widget):
                     elif isinstance(item, dict):
                         if item.get("m_type") == "text":
                             text_parts.append(item.get("m_content", ""))
+                        elif item.get("type") == "text":
+                            text_parts.append(item.get("text", ""))
                         else:
-                            text_parts.append(f"[{item.get('m_type', '?')}]")
+                            text_parts.append(f"[{item.get('m_type', item.get('type', '?'))}]")
                 yield Static(" ".join(text_parts), classes="msg-content user-msg")
 
         elif role == "assistant":
-            yield Static(Text.from_markup(f"\n[bold green]Assistant[/]"), classes="msg-role")
+            yield Static(Text.from_markup(f"\n[bold on dark_green] 🤖 Assistant [/]"), classes="msg-role")
+
+            # Render thinking blocks first (collapsible)
+            if self.msg.thinking_blocks:
+                yield ThinkingBlockWidget(self.msg.thinking_blocks)
+
             if isinstance(content, str) and content.strip():
                 prose, actions = parse_action_buttons(content)
                 if prose.strip():
@@ -267,14 +319,14 @@ class MessageWidget(Widget):
                         l1 = f.get("line1", 0)
                         l2 = f.get("line2", 0)
                         yield Static(
-                            Text.from_markup(f"  [dim cyan]attached[/] {fname}:{l1}-{l2}"),
+                            Text.from_markup(f"  [dim cyan]📎 attached[/] {fname}:{l1}-{l2}"),
                             classes="context-file",
                         )
                 except json.JSONDecodeError:
                     yield Static(Text.from_markup(f"[dim]{content[:100]}[/]"))
 
         elif role == "diff":
-            yield Static(Text.from_markup(f"\n[bold yellow]Diff[/]"), classes="msg-role")
+            yield Static(Text.from_markup(f"\n[bold on dark_orange] 📝 Diff [/]"), classes="msg-role")
             if isinstance(content, str):
                 try:
                     chunks = json.loads(content)
@@ -285,10 +337,10 @@ class MessageWidget(Widget):
 
         elif role == "system":
             if isinstance(content, str) and content.strip():
-                short = content[:120] + ("..." if len(content) > 120 else "")
+                short = content[:120] + ("…" if len(content) > 120 else "")
                 yield Collapsible(
                     Static(content, classes="system-full"),
-                    title=f"system: {short}",
+                    title=f"⚙ system: {short}",
                     collapsed=True,
                     classes="system-collapsible",
                 )
@@ -311,9 +363,9 @@ class StreamingContent(Static):
         if self.content_text:
             parts.append(Text(self.content_text))
         elif not self.tool_status:
-            parts.append(Text.from_markup("[dim italic]thinking...[/]"))
+            parts.append(Text.from_markup("[dim italic]💭 thinking…[/]"))
         if self.tool_status:
-            parts.append(Text.from_markup(f"\n[yellow]{self.tool_status}[/]"))
+            parts.append(Text.from_markup(f"\n[yellow]⏳ {self.tool_status}[/]"))
         if len(parts) == 0:
             return Text("")
         if len(parts) == 1:
@@ -362,7 +414,7 @@ class ChatPanel(Widget):
         container = self._messages_container
         if container is None:
             return
-        await container.mount(Static(Text.from_markup(f"\n[bold green]Assistant[/]"), classes="msg-role"))
+        await container.mount(Static(Text.from_markup(f"\n[bold on dark_green] 🤖 Assistant [/]"), classes="msg-role"))
         self._streaming_widget = StreamingContent(classes="streaming-content")
         self._streaming_had_content = False
         await container.mount(self._streaming_widget)
@@ -385,9 +437,7 @@ class ChatPanel(Widget):
             await self._streaming_widget.remove()
             self._streaming_widget = None
             self._streaming_had_content = False
-        # Only remove the temporary "Assistant" role label if no real content
-        # arrived (i.e. error path). If content arrived, render_all_messages
-        # will rebuild the panel cleanly.
+        # Only remove the temporary role label if no real content
         if not had_content and self._messages_container:
             role_widgets = self._messages_container.query(".msg-role")
             if role_widgets:
@@ -409,10 +459,7 @@ class ChatPanel(Widget):
         container.scroll_end(animate=False)
 
     async def show_links(self, links: list):
-        """Render follow-up links from /v1/links as clickable action buttons.
-
-        Only 'follow-up' links are rendered as chat buttons (matching GUI behaviour).
-        """
+        """Render follow-up links from /v1/links as clickable action buttons."""
         follow_ups = [
             lnk["link_text"]
             for lnk in links

@@ -1,13 +1,14 @@
-"""Refact Agent TUI - Main Application."""
+"""CraftifAI TUI - Main Application."""
 from __future__ import annotations
 
 import argparse
 import asyncio
 import os
+import platform
 import random
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -16,20 +17,89 @@ from textual.widgets import Static, Header, Footer
 from textual import work, events
 from rich.text import Text
 
-from refact_tui.services.agent_client import AgentClient, LSPRunner, Message, Caps
+from refact_tui.services.agent_client import (
+    AgentClient, LSPRunner, Message, Caps,
+    detect_default_port, IS_WIN,
+)
 from refact_tui.services.stream_handler import StreamState
+from refact_tui.services.history import ChatHistory
 from refact_tui.widgets.chat_panel import ChatPanel, ActionButtonsWidget
 from refact_tui.widgets.input_area import ChatInput
 from refact_tui.widgets.status_bar import StatusBar
 from refact_tui.widgets.sidebar import Sidebar, WorkflowPanel
 from refact_tui.screens.chat import HelpScreen
 from refact_tui.screens.settings import SettingsScreen
+from refact_tui.screens.confirm_screen import ConfirmScreen
+from refact_tui.screens.tools_screen import ToolsScreen
+from refact_tui.screens.checkpoint_screen import CheckpointScreen
+from refact_tui.screens.history_screen import HistoryScreen
 
+
+# ── ESP32 Detection ────────────────────────────────────────────────────────────
+
+def _detect_esp32_projects_path(project_path: str) -> Optional[str]:
+    """Try to find the ESP32 projects path from config files or project structure."""
+    # 1. Check setting files for esp32_tools.yaml
+    config_locations = []
+    if IS_WIN:
+        appdata = os.environ.get("APPDATA", os.path.join(os.path.expanduser("~"), "AppData", "Roaming"))
+        localappdata = os.environ.get("LOCALAPPDATA", os.path.join(os.path.expanduser("~"), "AppData", "Local"))
+        config_locations = [
+            os.path.join(appdata, "craftifai", "esp32_tools.yaml"),
+            os.path.join(localappdata, "refact", "esp32_tools.yaml"),
+            os.path.join(appdata, "refact", "esp32_tools.yaml"),
+        ]
+    else:
+        config_locations = [
+            os.path.expanduser("~/.config/craftifai/esp32_tools.yaml"),
+            os.path.expanduser("~/.config/refact/esp32_tools.yaml"),
+            os.path.expanduser("~/.cache/refact/esp32_tools.yaml"),
+        ]
+
+    for config_path in config_locations:
+        if os.path.isfile(config_path):
+            try:
+                import yaml
+                with open(config_path, "r") as f:
+                    data = yaml.safe_load(f)
+                if data and isinstance(data, dict):
+                    esp_config = data.get("esp32_config", {})
+                    projects_path = esp_config.get("projects_path", "")
+                    if projects_path and os.path.isdir(projects_path):
+                        return projects_path
+            except Exception:
+                # Try simple manual parsing if yaml not available
+                try:
+                    with open(config_path, "r") as f:
+                        for line in f:
+                            line = line.strip()
+                            if line.startswith("projects_path:"):
+                                val = line.split(":", 1)[1].strip().strip("'\"")
+                                if val and os.path.isdir(val):
+                                    return val
+                except Exception:
+                    pass
+
+    # 2. Check if current project looks like an ESP-IDF project
+    cmakelists = os.path.join(project_path, "CMakeLists.txt")
+    if os.path.isfile(cmakelists):
+        try:
+            with open(cmakelists, "r") as f:
+                content = f.read(2048)
+            if "idf_component" in content.lower() or "esp-idf" in content.lower():
+                return os.path.dirname(project_path)
+        except Exception:
+            pass
+
+    return None
+
+
+# ── Main App ───────────────────────────────────────────────────────────────────
 
 class RefactTUI(App):
-    """Terminal UI dashboard for Refact Agent."""
+    """Terminal UI dashboard for CraftifAI / Refact Agent."""
 
-    TITLE = "Refact Agent"
+    TITLE = "CraftifAI Agent"
     CSS_PATH = "styles/app.tcss"
 
     BINDINGS = [
@@ -38,6 +108,9 @@ class RefactTUI(App):
         Binding("ctrl+l", "clear_chat", "Clear", priority=True),
         Binding("ctrl+n", "new_chat", "New Chat", priority=True),
         Binding("ctrl+m", "switch_model", "Model", priority=True),
+        Binding("ctrl+t", "show_tools", "Tools", priority=True),
+        Binding("ctrl+z", "show_checkpoints", "Checkpoints", priority=True),
+        Binding("ctrl+h", "show_history", "History", priority=True),
         Binding("ctrl+p", "workflow_pause_resume", "Pause/Resume", priority=True),
         Binding("f1", "show_help", "Help"),
         Binding("escape", "cancel_stream", "Stop", priority=True),
@@ -49,6 +122,8 @@ class RefactTUI(App):
         project_path: str = ".",
         model: Optional[str] = None,
         lsp_runner: Optional[LSPRunner] = None,
+        chat_mode: str = "AGENT",
+        esp32_projects_path: Optional[str] = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -64,10 +139,16 @@ class RefactTUI(App):
         self._sidebar_visible = True
         self._help_visible = False
         self._streaming_task: Optional[asyncio.Task] = None
+        self._chat_mode = chat_mode
+        self._esp32_projects_path = esp32_projects_path
+        self._history = ChatHistory()
 
     def compose(self) -> ComposeResult:
         yield Static(
-            Text.from_markup("[bold]Refact Agent[/] │ [dim]^B sidebar │ ^M model │ ^N new │ ^L clear │ ^P pause │ F1 help │ Esc stop │ ^Q quit[/]"),
+            Text.from_markup(
+                "[bold cyan]CraftifAI[/] │ "
+                "[dim]^B sidebar │ ^M model │ ^T tools │ ^H history │ ^Z checkpoints │ ^N new │ ^L clear │ ^P pause │ F1 help │ Esc stop │ ^Q quit[/]"
+            ),
             id="app-header",
         )
         yield Horizontal(
@@ -84,6 +165,12 @@ class RefactTUI(App):
     async def on_mount(self):
         status = self.query_one("#status-bar", StatusBar)
         status.project_path = self._project_path
+        status.chat_mode = self._chat_mode
+
+        # Auto-detect ESP32 projects path if not provided
+        if not self._esp32_projects_path:
+            self._esp32_projects_path = _detect_esp32_projects_path(self._project_path)
+
         self._connect_agent()
 
     @work(exclusive=True)
@@ -154,7 +241,6 @@ class RefactTUI(App):
         self, event: "ActionButtonsWidget.ButtonAction"
     ) -> None:
         """Handle a click on an agent-generated action button."""
-        # Submit the button label as if the user typed it.
         await self.on_chat_input_submitted(ChatInput.Submitted(event.label))
 
     async def on_chat_input_submitted(self, event: ChatInput.Submitted):
@@ -221,12 +307,13 @@ class RefactTUI(App):
                     messages=self._state.messages,
                     model=self._model,
                     chat_id=self._chat_id,
+                    chat_mode=self._chat_mode,
+                    esp32_projects_path=self._esp32_projects_path,
+                    checkpoints_enabled=True,
                     on_data=on_data,
                 )
 
-                # Detect error: agent returned nothing new (same or fewer messages,
-                # no new assistant content). This happens when OpenAI rejects the
-                # request with a 4xx error that the agent propagates silently.
+                # Detect error: agent returned nothing new
                 new_msgs = [m for m in result_messages if m not in self._state.messages]
                 got_content = any(
                     m.role == "assistant" and (m.content or m.tool_calls)
@@ -258,16 +345,55 @@ class RefactTUI(App):
                             tool_panel.add_tool_call(tc.function.name, "ok")
 
                 if not self._state.has_pending_tool_calls:
-                    # Fetch follow-up links from /v1/links (same as GUI does)
+                    # Fetch follow-up links
                     links = await self._client.fetch_links(
                         chat_id=self._chat_id,
                         messages=self._state.messages,
                         model=self._model,
-                        chat_mode="AGENT",
+                        chat_mode=self._chat_mode,
                     )
                     if links:
                         await chat_panel.show_links(links)
+
+                    # Auto-save chat history
+                    self._history.save(
+                        chat_id=self._chat_id,
+                        messages=self._state.messages,
+                        model=self._model,
+                    )
                     break
+
+                # ── Tool Confirmation Check ────────────────────────────────
+                # Before re-submitting (the agent wants to execute tool calls),
+                # check if any tool calls require user confirmation.
+                last_msg = self._state.messages[-1] if self._state.messages else None
+                if last_msg and last_msg.role == "assistant" and last_msg.tool_calls:
+                    confirmation = await self._client.check_tool_confirmation(
+                        tool_calls=last_msg.tool_calls,
+                        messages=self._state.messages,
+                    )
+                    if confirmation.pause and confirmation.pause_reasons:
+                        # Show confirmation modal and wait for user decision
+                        decisions = await self._show_confirmation(confirmation.pause_reasons)
+                        if decisions:
+                            # Check if any tool was denied
+                            denied_ids = [
+                                tc_id for tc_id, decision in decisions.items()
+                                if decision == "deny"
+                            ]
+                            if denied_ids:
+                                # Insert denial messages for denied tools
+                                for tc_id in denied_ids:
+                                    # Find the matching reason
+                                    for reason in confirmation.pause_reasons:
+                                        if reason.tool_call_id == tc_id:
+                                            denial_msg = Message(
+                                                role="tool",
+                                                content=f"[DENIED by user] Tool call denied: {reason.command or 'tool execution'}. Reason: {reason.rule or 'user chose to deny'}",
+                                                tool_call_id=tc_id,
+                                            )
+                                            self._state.messages.append(denial_msg)
+                                            break
 
                 await chat_panel.start_streaming()
 
@@ -282,6 +408,24 @@ class RefactTUI(App):
             chat_input.set_disabled(False)
             chat_input.focus_input()
             self._streaming_task = None
+
+    async def _show_confirmation(self, reasons) -> Optional[Dict[str, str]]:
+        """Show the confirmation modal and wait for user decisions.
+
+        Returns a dict mapping tool_call_id → 'approve' | 'deny', or None.
+        """
+        future: asyncio.Future = asyncio.get_event_loop().create_future()
+
+        def on_result(result):
+            if not future.done():
+                future.set_result(result)
+
+        self.push_screen(ConfirmScreen(reasons), on_result)
+
+        try:
+            return await future
+        except Exception:
+            return None
 
     async def _handle_command(self, text: str):
         parts = text.split()
@@ -310,6 +454,24 @@ class RefactTUI(App):
             await self._export_chat()
         elif cmd == "/pause":
             await self.action_workflow_pause_resume()
+        elif cmd == "/tools":
+            await self.action_show_tools()
+        elif cmd == "/checkpoints":
+            await self.action_show_checkpoints()
+        elif cmd == "/history":
+            await self.action_show_history()
+        elif cmd == "/mode":
+            if len(parts) > 1:
+                new_mode = parts[1].upper()
+                if new_mode in ("AGENT", "EXPLORE", "NOTOOLS", "CONFIGURE"):
+                    self._chat_mode = new_mode
+                    status = self.query_one("#status-bar", StatusBar)
+                    status.chat_mode = self._chat_mode
+                    self.notify(f"Chat mode: {self._chat_mode}")
+                else:
+                    self.notify("Valid modes: AGENT, EXPLORE, NOTOOLS, CONFIGURE", severity="warning")
+            else:
+                self.notify(f"Current mode: {self._chat_mode}. Use /mode <MODE> to change.", severity="information")
         else:
             self.notify(f"Unknown command: {cmd}. Try /help for available commands.", severity="warning")
 
@@ -320,7 +482,13 @@ class RefactTUI(App):
         if not self._state.messages:
             self.notify("No messages to export", severity="warning")
             return
-        export_dir = os.path.expanduser("~/.cache/refact/")
+        if IS_WIN:
+            export_dir = os.path.join(
+                os.environ.get("APPDATA", os.path.join(os.path.expanduser("~"), "AppData", "Roaming")),
+                "craftifai", "exports"
+            )
+        else:
+            export_dir = os.path.expanduser("~/.cache/refact/")
         os.makedirs(export_dir, exist_ok=True)
         filename = os.path.join(export_dir, f"tui_export_{int(time.time())}.json")
         msgs = [m.model_dump(exclude_none=True) for m in self._state.messages]
@@ -340,6 +508,13 @@ class RefactTUI(App):
         self.notify("Chat cleared")
 
     async def action_new_chat(self):
+        # Save current chat before starting new one
+        if self._state.messages:
+            self._history.save(
+                chat_id=self._chat_id,
+                messages=self._state.messages,
+                model=self._model,
+            )
         await self.action_clear_chat()
         self._chat_id = f"tui-{random.randint(0, 0xFFFFFFFF):08x}"
         self.notify("New chat started")
@@ -360,6 +535,49 @@ class RefactTUI(App):
                 self.notify(f"Switched to {self._model}")
 
         self.push_screen(SettingsScreen(caps=self._caps, current_model=self._model), on_result)
+
+    async def action_show_tools(self):
+        if not self._client:
+            self.notify("Not connected to agent", severity="error")
+            return
+        self.push_screen(ToolsScreen(client=self._client))
+
+    async def action_show_checkpoints(self):
+        if not self._client:
+            self.notify("Not connected to agent", severity="error")
+            return
+
+        def on_result(result: Optional[str]):
+            if result:
+                self.notify(f"Checkpoint restored: {result[:12]}")
+
+        self.push_screen(CheckpointScreen(client=self._client, chat_id=self._chat_id), on_result)
+
+    async def action_show_history(self):
+        def on_result(result: Optional[str]):
+            if result:
+                self._restore_chat(result)
+
+        self.push_screen(HistoryScreen(), on_result)
+
+    @work(exclusive=True)
+    async def _restore_chat(self, chat_id: str):
+        """Restore a chat from history."""
+        messages = self._history.load_messages(chat_id)
+        if not messages:
+            self.notify("Failed to load chat history", severity="error")
+            return
+
+        chat_panel = self.query_one("#chat-panel", ChatPanel)
+        await chat_panel.clear_messages()
+        self._state.clear()
+        self._state.messages = messages
+        self._chat_id = chat_id
+
+        await chat_panel.render_all_messages(
+            [m for m in messages if m.role not in ("system",)]
+        )
+        self.notify(f"Restored chat {chat_id[:8]}")
 
     async def action_workflow_pause_resume(self):
         if not self._client:
@@ -382,19 +600,68 @@ class RefactTUI(App):
             self.notify("Streaming cancelled")
 
     async def action_quit(self):
+        # Save current chat before quitting
+        if self._state.messages:
+            self._history.save(
+                chat_id=self._chat_id,
+                messages=self._state.messages,
+                model=self._model,
+            )
         if self._client:
             await self._client.close()
         self.exit()
 
 
+# ── CLI ────────────────────────────────────────────────────────────────────────
+
+def _find_lsp_binary() -> Optional[str]:
+    """Search for the refact-lsp binary in common locations."""
+    bin_name = "refact-lsp.exe" if IS_WIN else "refact-lsp"
+
+    candidates = []
+    if IS_WIN:
+        # CraftifAI desktop app bundled location
+        appdata = os.environ.get("APPDATA", "")
+        localappdata = os.environ.get("LOCALAPPDATA", "")
+        candidates.extend([
+            os.path.join(appdata, "craftifai", "bin", bin_name),
+            os.path.join(localappdata, "CraftifAI", bin_name),
+            # Relative to this file (if running from repo)
+            os.path.join(os.path.dirname(__file__), "..", "..", "..", "bin", bin_name),
+        ])
+    else:
+        candidates.extend([
+            os.path.expanduser("~/.local/bin/refact-lsp"),
+            "/usr/local/bin/refact-lsp",
+        ])
+
+    # Common location relative to repo
+    candidates.append(
+        os.path.join(
+            os.path.dirname(__file__), "..", "..", "..",
+            "engine", "python_binding_and_cmdline", "refact", "bin", bin_name,
+        )
+    )
+
+    for candidate in candidates:
+        candidate = os.path.abspath(candidate)
+        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+
+    return None
+
+
 def parse_args():
-    parser = argparse.ArgumentParser(description="Refact Agent TUI Dashboard")
+    parser = argparse.ArgumentParser(description="CraftifAI Agent TUI Dashboard")
     parser.add_argument("path_to_project", type=str, nargs="?", default=".", help="Path to the project")
     parser.add_argument("--port", type=int, default=None, help="Connect to an already-running agent on this port")
     parser.add_argument("--model", type=str, default=None, help="Model to use for chat")
     parser.add_argument("--lsp-binary", type=str, default=None, help="Path to refact-lsp binary (starts a new agent)")
     parser.add_argument("--address-url", type=str, default=None, help="Address URL for refact-lsp")
     parser.add_argument("--api-key", type=str, default=None, help="API key for refact-lsp")
+    parser.add_argument("--chat-mode", type=str, default="AGENT", choices=["AGENT", "EXPLORE", "NOTOOLS", "CONFIGURE"],
+                        help="Chat mode (default: AGENT)")
+    parser.add_argument("--esp32-projects-path", type=str, default=None, help="Path to ESP32 projects directory")
     return parser.parse_args()
 
 
@@ -402,9 +669,16 @@ async def run_app():
     args = parse_args()
     project = os.path.abspath(args.path_to_project)
 
+    common_kwargs = dict(
+        project_path=project,
+        model=args.model,
+        chat_mode=args.chat_mode,
+        esp32_projects_path=args.esp32_projects_path,
+    )
+
     if args.port:
         base_url = f"http://127.0.0.1:{args.port}/v1"
-        app = RefactTUI(base_url=base_url, project_path=project, model=args.model)
+        app = RefactTUI(base_url=base_url, **common_kwargs)
         await app.run_async()
     elif args.lsp_binary:
         extra = []
@@ -417,22 +691,13 @@ async def run_app():
         async with runner:
             app = RefactTUI(
                 base_url=runner.base_url(),
-                project_path=project,
-                model=args.model,
                 lsp_runner=runner,
+                **common_kwargs,
             )
             await app.run_async()
     else:
-        # Try default port, or look for refact-lsp in common locations
-        binary = None
-        for candidate in [
-            os.path.expanduser("~/.local/bin/refact-lsp"),
-            "/usr/local/bin/refact-lsp",
-            os.path.join(os.path.dirname(__file__), "..", "..", "..", "engine", "python_binding_and_cmdline", "refact", "bin", "refact-lsp"),
-        ]:
-            if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
-                binary = candidate
-                break
+        # Try to find a running agent first (desktop app on 8486, or standalone on 8001)
+        binary = _find_lsp_binary()
 
         if binary:
             extra = ["--workspace-folder", project]
@@ -444,17 +709,16 @@ async def run_app():
             async with runner:
                 app = RefactTUI(
                     base_url=runner.base_url(),
-                    project_path=project,
-                    model=args.model,
                     lsp_runner=runner,
+                    **common_kwargs,
                 )
                 await app.run_async()
         else:
-            # Try connecting to default port
+            # Auto-detect the best port (8486 for desktop app, 8001 for standalone)
+            port = detect_default_port()
             app = RefactTUI(
-                base_url="http://127.0.0.1:8001/v1",
-                project_path=project,
-                model=args.model,
+                base_url=f"http://127.0.0.1:{port}/v1",
+                **common_kwargs,
             )
             await app.run_async()
 

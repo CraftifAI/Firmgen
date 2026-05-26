@@ -227,3 +227,68 @@
 .toolSummary_compiling { color: var(--stage-compiling-soft); }
 .toolSummary_flash { color: var(--stage-flashing-soft); }
 .toolSummary_monitoring { color: var(--stage-monitoring-soft); }
+
+/* Agent status — tight under user bubble, no box chrome */
+.agentWorkingBelowBlob {
+  margin-top: 6px;
+  margin-bottom: 2px;
+  padding: 0;
+  border: none;
+  background: none;
+  box-shadow: none;
+  width: fit-content;
+  max-width: 100%;
+  align-self: flex-start;
+}
+
+.workingLine {
+  display: flex;
+  align-items: baseline;
+  gap: 0;
+  color: var(--gray-11);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.workingVerb {
+  margin-right: 1px;
+}
+
+.animatedDots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 1em;
+  padding-left: 2px;
+  vertical-align: -2px;
+}
+
+.animatedDot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--palette-cyan-500) 85%, var(--gray-11));
+  opacity: 0.35;
+  animation: agentWorkingDotPulse 1.05s ease-in-out infinite;
+}
+
+.animatedDot:nth-child(2) {
+  animation-delay: 0.18s;
+}
+
+.animatedDot:nth-child(3) {
+  animation-delay: 0.36s;
+}
+
+@keyframes agentWorkingDotPulse {
+  0%,
+  70%,
+  100% {
+    opacity: 0.3;
+    transform: translateY(0) scale(1);
+  }
+  35% {
+    opacity: 1;
+    transform: translateY(-3px) scale(1.05);
+  }
+}
