@@ -3,6 +3,8 @@ import { CRAFTIF_API_BASE } from "../config/craftifApiBase";
 
 const DISPLAY_NAME_CHANGE_EVENT = "craftif-display-name-changed";
 const SESSION_JWT_STORAGE_KEY = "craftif_session_jwt";
+const DISPLAY_NAME_STORAGE_KEY = "craftif_display_name";
+export const REMEMBER_ME_PREF_KEY = "craftif_remember_me";
 
 function notifyDisplayNameChanged() {
     if (typeof window !== "undefined") {
@@ -21,6 +23,11 @@ export interface User {
     email: string;
     role?: string;
     username?: string;
+}
+
+export interface CraftifLoginOptions {
+    displayNameHint?: string;
+    rememberMe?: boolean;
 }
 
 function decodeJwtPayload(token: string): Record<string, unknown> | null {
@@ -44,10 +51,35 @@ function isJwtExpired(token: string): boolean {
     return exp <= nowInSeconds;
 }
 
+function displayNameFromJwt(token: string): string | null {
+    const payload = decodeJwtPayload(token);
+    if (!payload) return null;
+
+    const candidates = [
+        payload.username,
+        payload.name,
+        payload.displayName,
+        payload.preferred_username,
+    ];
+    for (const candidate of candidates) {
+        if (typeof candidate === "string" && candidate.trim()) {
+            return candidate.trim();
+        }
+    }
+
+    if (typeof payload.email === "string" && payload.email.includes("@")) {
+        const local = payload.email.split("@")[0]?.trim();
+        if (local) return local;
+    }
+
+    return null;
+}
+
 function clearStoredSessionJwt(): void {
     try {
         if (typeof window !== "undefined") {
             localStorage.removeItem(SESSION_JWT_STORAGE_KEY);
+            sessionStorage.removeItem(SESSION_JWT_STORAGE_KEY);
         }
     } catch {
         /* ignore */
@@ -60,10 +92,15 @@ export function clearCraftifSessionJwt(): void {
     clearStoredSessionJwt();
 }
 
-function persistSessionJwt(token: string): void {
+function persistSessionJwt(token: string, rememberMe: boolean): void {
     try {
-        if (typeof window !== "undefined") {
+        if (typeof window === "undefined") return;
+        if (rememberMe) {
             localStorage.setItem(SESSION_JWT_STORAGE_KEY, token);
+            sessionStorage.removeItem(SESSION_JWT_STORAGE_KEY);
+        } else {
+            sessionStorage.setItem(SESSION_JWT_STORAGE_KEY, token);
+            localStorage.removeItem(SESSION_JWT_STORAGE_KEY);
         }
     } catch {
         /* ignore */
@@ -73,31 +110,82 @@ function persistSessionJwt(token: string): void {
 function readStoredSessionJwt(): string | null {
     if (typeof window === "undefined") return null;
     try {
-        const token = localStorage.getItem(SESSION_JWT_STORAGE_KEY);
-        if (!token) return null;
-        if (isJwtExpired(token)) {
-            clearStoredSessionJwt();
-            return null;
+        for (const storage of [localStorage, sessionStorage]) {
+            const token = storage.getItem(SESSION_JWT_STORAGE_KEY);
+            if (!token) continue;
+            if (isJwtExpired(token)) {
+                storage.removeItem(SESSION_JWT_STORAGE_KEY);
+                continue;
+            }
+            return token;
         }
-        return token;
+        return null;
     } catch {
         return null;
     }
 }
 
-export let sessionJwt: string | null = readStoredSessionJwt();
-
-const DISPLAY_NAME_STORAGE_KEY = "craftif_display_name";
-
-/** In-memory mirror; sessionStorage is source of truth after login (survives navigation). */
+/** In-memory mirror; storage is source of truth after login. */
 export let sessionDisplayName: string | null = null;
+
+export let sessionJwt: string | null = readStoredSessionJwt();
 
 function readStoredDisplayName(): string | null {
     if (typeof window === "undefined") return sessionDisplayName;
     try {
-        return sessionStorage.getItem(DISPLAY_NAME_STORAGE_KEY) ?? sessionDisplayName;
+        return (
+            localStorage.getItem(DISPLAY_NAME_STORAGE_KEY) ??
+            sessionStorage.getItem(DISPLAY_NAME_STORAGE_KEY) ??
+            sessionDisplayName
+        );
     } catch {
         return sessionDisplayName;
+    }
+}
+
+function hydrateDisplayNameFromStorage(token: string | null): void {
+    if (!token) return;
+
+    const stored = readStoredDisplayName();
+    if (stored?.trim()) {
+        sessionDisplayName = stored.trim();
+        return;
+    }
+
+    const fromJwt = displayNameFromJwt(token);
+    if (!fromJwt) return;
+
+    sessionDisplayName = fromJwt;
+    try {
+        if (typeof window === "undefined") return;
+        if (localStorage.getItem(SESSION_JWT_STORAGE_KEY)) {
+            localStorage.setItem(DISPLAY_NAME_STORAGE_KEY, fromJwt);
+        } else if (sessionStorage.getItem(SESSION_JWT_STORAGE_KEY)) {
+            sessionStorage.setItem(DISPLAY_NAME_STORAGE_KEY, fromJwt);
+        }
+    } catch {
+        /* ignore */
+    }
+}
+
+hydrateDisplayNameFromStorage(sessionJwt);
+
+export function readRememberMePreference(): boolean {
+    if (typeof window === "undefined") return false;
+    try {
+        return localStorage.getItem(REMEMBER_ME_PREF_KEY) === "true";
+    } catch {
+        return false;
+    }
+}
+
+function persistRememberMePreference(rememberMe: boolean): void {
+    try {
+        if (typeof window !== "undefined") {
+            localStorage.setItem(REMEMBER_ME_PREF_KEY, rememberMe ? "true" : "false");
+        }
+    } catch {
+        /* ignore */
     }
 }
 
@@ -105,6 +193,7 @@ export function clearStoredCraftifDisplayName(): void {
     sessionDisplayName = null;
     try {
         if (typeof window !== "undefined") {
+            localStorage.removeItem(DISPLAY_NAME_STORAGE_KEY);
             sessionStorage.removeItem(DISPLAY_NAME_STORAGE_KEY);
         }
     } catch {
@@ -113,11 +202,17 @@ export function clearStoredCraftifDisplayName(): void {
     notifyDisplayNameChanged();
 }
 
-function persistDisplayName(name: string): void {
+function persistDisplayName(name: string, rememberMe: boolean): void {
     sessionDisplayName = name;
     try {
         if (typeof window !== "undefined") {
-            sessionStorage.setItem(DISPLAY_NAME_STORAGE_KEY, name);
+            if (rememberMe) {
+                localStorage.setItem(DISPLAY_NAME_STORAGE_KEY, name);
+                sessionStorage.removeItem(DISPLAY_NAME_STORAGE_KEY);
+            } else {
+                sessionStorage.setItem(DISPLAY_NAME_STORAGE_KEY, name);
+                localStorage.removeItem(DISPLAY_NAME_STORAGE_KEY);
+            }
         }
     } catch {
         /* ignore */
@@ -162,7 +257,12 @@ export const useCraftifAuth = () => {
         });
     }, []);
 
-    const login = useCallback(async (email: string, password: string, displayNameHint?: string) => {
+    const login = useCallback(async (
+        email: string,
+        password: string,
+        options?: CraftifLoginOptions,
+    ) => {
+        const rememberMe = options?.rememberMe ?? false;
         setLoading(true);
         setError(null);
         try {
@@ -184,7 +284,8 @@ export const useCraftifAuth = () => {
 
             setJwt(data.token);
             sessionJwt = data.token;
-            persistSessionJwt(data.token);
+            persistSessionJwt(data.token, rememberMe);
+            persistRememberMePreference(rememberMe);
 
             // Push the JWT out-of-band directly to the local python proxy.
             // This bypasses the Rust agent's reliance on `cli.yaml` dummy keys.
@@ -199,11 +300,11 @@ export const useCraftifAuth = () => {
             }
 
             const resolvedName = resolveDisplayName(
-                displayNameHint,
+                options?.displayNameHint,
                 data.username,
                 email,
             );
-            persistDisplayName(resolvedName);
+            persistDisplayName(resolvedName, rememberMe);
 
             setUser({
                 id: data.id || "user",

@@ -388,6 +388,72 @@ pub fn generate_suggested_actions(
             });
         }
 
+        // After project creation conflict or failure
+        ("create", false) => {
+            if let Some(ref name) = context.create_project_name {
+                let mut use_params = HashMap::new();
+                use_params.insert("operation".to_string(), "create".to_string());
+                use_params.insert("project_name".to_string(), name.clone());
+                use_params.insert("if_exists".to_string(), "use".to_string());
+                if let Some(ref t) = context.create_template {
+                    use_params.insert("template".to_string(), t.clone());
+                }
+                if let Some(ref t) = context.create_target {
+                    use_params.insert("target".to_string(), t.clone());
+                }
+                actions.push(SuggestedAction {
+                    action: "esp32_project".to_string(),
+                    reason: "Reuse the existing project folder if it is valid".to_string(),
+                    parameters: use_params,
+                    priority: ActionPriority::High,
+                });
+
+                let mut replace_params = HashMap::new();
+                replace_params.insert("operation".to_string(), "create".to_string());
+                replace_params.insert("project_name".to_string(), name.clone());
+                replace_params.insert("if_exists".to_string(), "replace".to_string());
+                if let Some(ref t) = context.create_template {
+                    replace_params.insert("template".to_string(), t.clone());
+                }
+                if let Some(ref t) = context.create_target {
+                    replace_params.insert("target".to_string(), t.clone());
+                }
+                actions.push(SuggestedAction {
+                    action: "esp32_project".to_string(),
+                    reason: "Delete the existing folder and recreate the project".to_string(),
+                    parameters: replace_params,
+                    priority: ActionPriority::Medium,
+                });
+
+                if let Some(alt) = context.create_suggested_names.first() {
+                    let mut alt_params = HashMap::new();
+                    alt_params.insert("operation".to_string(), "create".to_string());
+                    alt_params.insert("project_name".to_string(), alt.clone());
+                    alt_params.insert("if_exists".to_string(), "auto_suffix".to_string());
+                    if let Some(ref t) = context.create_template {
+                        alt_params.insert("template".to_string(), t.clone());
+                    }
+                    if let Some(ref t) = context.create_target {
+                        alt_params.insert("target".to_string(), t.clone());
+                    }
+                    actions.push(SuggestedAction {
+                        action: "esp32_project".to_string(),
+                        reason: format!("Create under an available name '{}'", alt),
+                        parameters: alt_params,
+                        priority: ActionPriority::Medium,
+                    });
+                }
+            }
+            actions.push(SuggestedAction {
+                action: "esp32_project".to_string(),
+                reason: "List existing projects in the workspace before choosing a name".to_string(),
+                parameters: [
+                    ("operation".to_string(), "list_projects".to_string()),
+                ].iter().cloned().collect(),
+                priority: ActionPriority::Low,
+            });
+        }
+
         // After component search
         ("search", true) if context.has_results => {
             actions.push(SuggestedAction {
@@ -427,6 +493,10 @@ pub struct SuggestionContext {
     pub has_results: bool,
     pub project_path: Option<String>,
     pub board_id_set: bool,
+    pub create_project_name: Option<String>,
+    pub create_template: Option<String>,
+    pub create_target: Option<String>,
+    pub create_suggested_names: Vec<String>,
 }
 
 impl SuggestionContext {
@@ -451,6 +521,26 @@ impl SuggestionContext {
 
     pub fn with_board_id(mut self, set: bool) -> Self {
         self.board_id_set = set;
+        self
+    }
+
+    pub fn with_create_params(
+        mut self,
+        project_name: &str,
+        suggested_names: Vec<String>,
+    ) -> Self {
+        self.create_project_name = Some(project_name.to_string());
+        self.create_suggested_names = suggested_names;
+        self
+    }
+
+    pub fn with_create_template(mut self, template: &str) -> Self {
+        self.create_template = Some(template.to_string());
+        self
+    }
+
+    pub fn with_create_target(mut self, target: &str) -> Self {
+        self.create_target = Some(target.to_string());
         self
     }
 }

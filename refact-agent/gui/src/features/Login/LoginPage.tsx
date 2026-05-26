@@ -11,8 +11,9 @@ import {
   Link,
 } from "@radix-ui/themes";
 import { Mail, Lock, Eye, EyeOff, KeyRound } from "lucide-react";
-import { useCraftifAuth } from "../../hooks";
+import { useCraftifAuth, readRememberMePreference } from "../../hooks";
 import { useEventsBusForIDE } from "../../hooks";
+import { Checkbox } from "../../components/Checkbox";
 
 type SignUpStep = "credentials" | "otp";
 
@@ -29,6 +30,7 @@ export const LoginPage: React.FC = () => {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [credentialsError, setCredentialsError] = useState<string | null>(null);
   const [otp, setOtp] = useState("");
+  const [rememberMe, setRememberMe] = useState(readRememberMePreference);
 
   const handleToggleMode = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -45,7 +47,7 @@ export const LoginPage: React.FC = () => {
     event.preventDefault();
     if (loading) return;
     try {
-      const token = await login(email, password);
+      const token = await login(email, password, { rememberMe });
       proceedWithAuth(token);
     } catch {
       // error surfaced from hook
@@ -73,7 +75,7 @@ export const LoginPage: React.FC = () => {
     if (loading) return;
     try {
       await verifySignupOtp(email, otp);
-      const token = await login(email, password);
+      const token = await login(email, password, { rememberMe });
       proceedWithAuth(token);
     } catch {
       // error surfaced from hook
@@ -139,6 +141,16 @@ export const LoginPage: React.FC = () => {
           </TextField.Slot>
         </TextField.Root>
       </Box>
+
+      <Checkbox
+        checked={rememberMe}
+        disabled={loading}
+        onCheckedChange={(checked) => setRememberMe(checked === true)}
+      >
+        <Text size="2" color="gray">
+          Save credentials (stay signed in)
+        </Text>
+      </Checkbox>
 
       {error && (
         <Text size="2" color="red" align="center">{error}</Text>

@@ -346,13 +346,23 @@ impl Esp32ToolRegistry {
         Esp32ToolInfo {
             name: "esp32_project".to_string(),
             display_name: "ESP32 Project".to_string(),
-            description: "Manage ESP32 projects. Operations: create, list_examples, search_examples, validate.".to_string(),
+            description: "Manage ESP32 projects. Operations: create, list_projects, list_examples, validate.".to_string(),
             operations: vec![
                 ToolOperationInfo {
                     name: "create".to_string(),
                     description: "Create new project from template/example".to_string(),
                     required_params: vec!["operation".to_string(), "project_name".to_string()],
-                    optional_params: vec!["template".to_string(), "target".to_string(), "project_path".to_string()],
+                    optional_params: vec![
+                        "template".to_string(),
+                        "target".to_string(),
+                        "if_exists".to_string(),
+                    ],
+                },
+                ToolOperationInfo {
+                    name: "list_projects".to_string(),
+                    description: "List existing ESP-IDF projects in the workspace folder".to_string(),
+                    required_params: vec!["operation".to_string()],
+                    optional_params: vec![],
                 },
                 ToolOperationInfo {
                     name: "list_examples".to_string(),
