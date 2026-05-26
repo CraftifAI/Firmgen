@@ -345,20 +345,27 @@ Board-specific metadata (for example, for ESP32-S3 DevKitC-1 and DevKitM-1) is s
 
 - **Docker (ESP32):** `docker-compose.test.yml` — see Quick Start with Docker.
 - **C2000 Tools:** `refact-agent/engine/src/tools/c2000_tools/README.md`
+- **Git workflow (team):** [`docs/GIT_WORKFLOW.md`](docs/GIT_WORKFLOW.md)
 - **Development:** `CONTRIBUTING.md`
 
 ---
 
 ## 🤝 Contributing
 
-We welcome contributions! 
+### CraftifAI team
+
+1. Pull the latest **`stage`** branch
+2. Create a feature branch: `feature/<your-name>-<short-description>`
+3. Open a Pull Request into **`stage`** (not `main`)
+4. After testing on `stage`, maintainers promote to **`main`** for production
+
+See **[docs/GIT_WORKFLOW.md](docs/GIT_WORKFLOW.md)** for the full guide.
+
+### External contributors
 
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Make your changes
-4. Commit (`git commit -m 'Add amazing feature'`)
-5. Push (`git push origin feature/amazing-feature`)
-6. Open a Pull Request
+2. Create a feature branch from `stage`
+3. Make your changes and open a Pull Request into `stage`
 
 ---
 

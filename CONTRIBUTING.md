@@ -1,3 +1,16 @@
+## 🤝 Contributing to Firmgen (CraftifAI team)
+
+If you are on the CraftifAI team working on **Firmgen**, start here:
+
+👉 **[Git Workflow & Branching Guide](docs/GIT_WORKFLOW.md)**
+
+Summary:
+- **`stage`** — pull this branch, create your feature branch from it, open PRs back into `stage`
+- **`main`** — production only; merged from `stage` by maintainers when release-ready
+- Feature branch naming: `feature/<your-name>-<short-description>`
+
+---
+
 ## 🤝 Contributing to Refact Agent
 Thanks for your interest in contributing to Refact Agent! We’re an open-source agent build with community — and we’re excited to have you here.
 
