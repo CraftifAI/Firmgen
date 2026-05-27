@@ -89,6 +89,11 @@ if [ "$SKIP_GUI" = false ]; then
     npm ci --prefer-offline 2>&1 | tail -3
   fi
 
+  info "Syncing brand assets (logo, icons)…"
+  cd "$DESKTOP_DIR"
+  npm run sync-brand-assets
+  cd "$GUI_DIR"
+
   info "Building standalone app bundle (vite.app.config.ts)…"
   VITE_REFACT_LSP_URL=http://127.0.0.1:8486 \
   VITE_UPLOAD_API_URL=http://127.0.0.1:8002 \

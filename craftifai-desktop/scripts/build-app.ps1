@@ -89,6 +89,12 @@ if (-not $SkipGui) {
         if ($LASTEXITCODE -ne 0) { Write-Err "npm ci failed"; exit 1 }
     }
 
+    Write-Info "Syncing brand assets (logo, icons)..."
+    Push-Location $DesktopDir
+    npm run sync-brand-assets
+    if ($LASTEXITCODE -ne 0) { Write-Err "Brand asset sync failed"; exit 1 }
+    Pop-Location
+
     Write-Info "Building standalone app bundle (vite.app.config.ts)..."
     $env:VITE_REFACT_LSP_URL = "http://127.0.0.1:8486"
     $env:VITE_UPLOAD_API_URL = "http://127.0.0.1:8002"

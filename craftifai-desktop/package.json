@@ -7,7 +7,8 @@
   "license": "BSD-3-Clause",
   "private": true,
   "scripts": {
-    "build:gui": "npm --prefix ../refact-agent/gui run build:desktop",
+    "sync-brand-assets": "node scripts/sync-brand-assets.js",
+    "build:gui": "npm run sync-brand-assets && npm --prefix ../refact-agent/gui run build:desktop",
     "start": "electron .",
     "dev": "electron . --dev",
     "dev:app": "npm run build:gui && electron . --dev",
@@ -26,6 +27,7 @@
   },
   "devDependencies": {
     "electron": "^33.0.0",
-    "electron-builder": "^25.1.8"
+    "electron-builder": "^25.1.8",
+    "png-to-ico": "^2.1.8"
   }
 }
