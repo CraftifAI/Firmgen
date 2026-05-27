@@ -87,6 +87,42 @@ function requestFullQuit() {
   app.quit();
 }
 
+/**
+ * Kill any processes that are already bound to our service ports (8002, 8486).
+ * Called once at startup so stale processes from a previous crash or force-kill
+ * can never silently hijack a new session.
+ */
+function killOrphanedPortProcesses() {
+  const ports = [8002, 8486];
+  for (const port of ports) {
+    try {
+      if (IS_WIN) {
+        const out = execSync(`netstat -ano | findstr ":${port} "`, { encoding: 'utf8' });
+        for (const line of out.trim().split('\n')) {
+          if (!line.includes('LISTENING')) continue;
+          const pid = line.trim().split(/\s+/).pop();
+          if (pid && pid !== '0') {
+            try {
+              execSync(`taskkill /PID ${pid} /T /F`, { stdio: 'ignore' });
+              log('MAIN', `Killed orphaned process on port ${port} (PID ${pid})`);
+            } catch (_) {}
+          }
+        }
+      } else {
+        const out = execSync(`lsof -t -i:${port}`, { encoding: 'utf8' });
+        for (const pid of out.trim().split('\n').filter(Boolean)) {
+          try {
+            process.kill(parseInt(pid, 10), 'SIGKILL');
+            log('MAIN', `Killed orphaned process on port ${port} (PID ${pid})`);
+          } catch (_) {}
+        }
+      }
+    } catch (_) {
+      // Port not in use — normal, nothing to clean up
+    }
+  }
+}
+
 // ─── Python venv management ───────────────────────────────────────────────────
 const VENV_DIR = path.join(CONFIG_DIR, 'venv');
 
@@ -672,6 +708,10 @@ async function launchApp(incomingSettings) {
   mainWindow.once('ready-to-show', () => mainWindow.show());
 
   try {
+    // 0. Kill any orphaned processes from a previous crash or force-kill
+    //    so we never accidentally connect to a stale server from a prior session.
+    killOrphanedPortProcesses();
+
     // 1. Sync esp32_tools.yaml so /v1/esp32-config returns correct paths
     syncEsp32Config(settings);
 
@@ -711,6 +751,18 @@ async function launchApp(incomingSettings) {
 
   } catch (err) {
     log('MAIN', `Launch failed: ${err.message}`);
+    // Kill any services that managed to start before the error so they don't
+    // linger as orphans after the user closes the error screen.
+    for (const proc of [apiProcess, lspProcess]) {
+      if (proc && proc.pid) {
+        try {
+          if (IS_WIN) execSync(`taskkill /PID ${proc.pid} /T /F`, { stdio: 'ignore' });
+          else proc.kill('SIGTERM');
+        } catch (_) {}
+      }
+    }
+    apiProcess = null;
+    lspProcess = null;
     mainWindow.loadFile(path.join(__dirname, 'renderer', 'error.html'));
     mainWindow.webContents.once('did-finish-load', () => {
       sendToRenderer('error-message', err.message);
@@ -842,8 +894,11 @@ ipcMain.handle('open-logs', () => shell.openPath(LOG_DIR));
 
 ipcMain.handle('reset-settings', () => {
   try { fs.unlinkSync(CONFIG_FILE); } catch (_) {}
+  // app.relaunch() must be called before app.quit() so Electron schedules the
+  // relaunch. Using app.quit() (not app.exit) ensures before-quit fires and
+  // kills the API + LSP processes before the new instance starts.
   app.relaunch();
-  app.exit(0);
+  app.quit();
 });
 
 // ─── App Lifecycle ─────────────────────────────────────────────────────────────
@@ -876,23 +931,33 @@ app.whenReady().then(async () => {
   });
 });
 
-app.on('before-quit', () => {
-  isQuitting = true;
+function killAllServices() {
   log('MAIN', 'Shutting down services…');
   if (IS_WIN) {
-    // On Windows, kill the entire process tree (wrapper + grandchildren like refact-lsp.exe)
-    const { execSync } = require('child_process');
+    // Kill the entire process tree (wrapper + grandchildren like refact-lsp.exe)
     for (const proc of [lspProcess, apiProcess]) {
       if (proc && proc.pid) {
         try { execSync(`taskkill /PID ${proc.pid} /T /F`, { stdio: 'ignore' }); } catch (_) {}
       }
     }
   } else {
-    if (lspProcess) lspProcess.kill('SIGTERM');
-    if (apiProcess) apiProcess.kill('SIGTERM');
+    if (lspProcess) { try { lspProcess.kill('SIGTERM'); } catch (_) {} }
+    if (apiProcess) { try { apiProcess.kill('SIGTERM'); } catch (_) {} }
   }
   lspProcess = null;
   apiProcess = null;
+}
+
+app.on('before-quit', () => {
+  isQuitting = true;
+  killAllServices();
+});
+
+// Last-resort safety net: fires even when Electron exits abnormally
+// (unhandled exception, SIGTERM from OS, etc.). Not guaranteed on hard
+// kills (SIGKILL / Task Manager), but catches most crash scenarios.
+process.on('exit', () => {
+  killAllServices();
 });
 
 app.on('window-all-closed', () => {
