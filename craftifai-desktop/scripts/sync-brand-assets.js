@@ -25,7 +25,7 @@ function copyFile(from, to) {
 }
 
 async function writeIco() {
-  const pngToIco = require("png-to-ico");
+  const { default: pngToIco } = await import("png-to-ico");
   const buf = await pngToIco(SOURCE);
   const icoPath = path.join(ASSETS, "icon.ico");
   fs.writeFileSync(icoPath, buf);
