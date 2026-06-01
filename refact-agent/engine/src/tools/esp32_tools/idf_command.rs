@@ -517,19 +517,70 @@ pub fn list_serial_ports() -> Vec<String> {
     ports
 }
 
+fn serial_ports_equal(a: &str, b: &str) -> bool {
+    if cfg!(windows) {
+        a.trim().eq_ignore_ascii_case(b.trim())
+    } else {
+        a.trim() == b.trim()
+    }
+}
+
+/// Tier-1 preflight: fail fast when the resolved port is not currently visible to the OS.
+pub fn ensure_serial_port_listed(port: &str) -> Result<(), String> {
+    let port = port.trim();
+    if port.is_empty() {
+        return Err("Serial port is empty.".to_string());
+    }
+
+    let available = list_serial_ports();
+    if available.iter().any(|p| serial_ports_equal(p, port)) {
+        return Ok(());
+    }
+
+    let visible = if available.is_empty() {
+        "(none — check USB cable and drivers)".to_string()
+    } else {
+        available.join(", ")
+    };
+
+    Err(format!(
+        "Port {} is not available (device unplugged, port reassigned, or wrong port). Visible ports: {}. Run esp32_device(operation=\"detect\").",
+        port, visible
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
+    fn ensure_serial_port_listed_accepts_listed_port() {
+        let available = list_serial_ports();
+        if let Some(port) = available.first() {
+            assert!(ensure_serial_port_listed(port).is_ok());
+        }
+    }
+
+    #[test]
+    fn ensure_serial_port_listed_rejects_missing_port() {
+        let err = ensure_serial_port_listed("COM99999").unwrap_err();
+        assert!(err.contains("not available"));
+        assert!(err.contains("detect"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn serial_ports_equal_ignore_case_on_windows() {
+        assert!(serial_ports_equal("COM3", "com3"));
+    }
+
+    #[test]
     fn test_is_esp_idf_project() {
-        // This would need a mock filesystem for proper testing
         assert!(!is_esp_idf_project(Path::new("/nonexistent")));
     }
 
     #[test]
     fn test_list_serial_ports() {
-        // Just ensure it doesn't panic
         let _ = list_serial_ports();
     }
 }

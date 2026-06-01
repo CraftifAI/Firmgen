@@ -12,7 +12,7 @@ use crate::call_validation::{ChatMessage, ChatContent, ContextEnum};
 
 use super::config::ESP32Config;
 use super::output_protocol::ToolOutput;
-use super::idf_command::{IdfCommand, infer_project_path, list_serial_ports as get_serial_ports};
+use super::idf_command::{IdfCommand, infer_project_path, list_serial_ports as get_serial_ports, ensure_serial_port_listed};
 use super::global_state::{
     get_config, get_state, get_state_mut, generate_suggested_actions, SuggestionContext,
     board_definition_url, resolve_device_port, record_device_port, record_device_port_in_use,
@@ -652,8 +652,96 @@ impl ESP32Device {
         None
     }
 
+    /// Tier-1 port list check; on failure runs internal detect once and returns the new port.
+    async fn resolve_flash_port_after_preflight(
+        &self,
+        config: &ESP32Config,
+        args: &HashMap<String, Value>,
+    ) -> Result<(String, Option<String>), String> {
+        let original_port = resolve_device_port(config, args, PortResolutionPolicy::PreferKnown).await?;
+
+        let tier1_err = match ensure_serial_port_listed(&original_port) {
+            Ok(()) => return Ok((original_port, None)),
+            Err(e) => e,
+        };
+
+        tracing::info!(
+            "Flash preflight failed for {}: {}; running auto-detect",
+            original_port,
+            tier1_err
+        );
+
+        let detect_output = self.detect_devices(config).await?;
+
+        let devices_empty = detect_output
+            .data
+            .get("devices")
+            .and_then(|v| v.as_array())
+            .map(|a| a.is_empty())
+            .unwrap_or(true);
+
+        if devices_empty {
+            return Err(format!(
+                "{}\n\nAuto-detect after preflight failure found no devices. {}",
+                tier1_err,
+                detect_output.summary
+            ));
+        }
+
+        let new_port = {
+            let state = get_state().await;
+            state.session.active_device.as_ref().map(|d| d.port.clone())
+        }
+        .or_else(|| {
+            detect_output
+                .data
+                .get("active_device")
+                .and_then(|v| v.get("port"))
+                .and_then(|v| v.as_str())
+                .map(str::to_string)
+        })
+        .or_else(|| {
+            detect_output
+                .data
+                .get("devices")
+                .and_then(|v| v.as_array())
+                .and_then(|arr| arr.first())
+                .and_then(|dev| dev.get("port"))
+                .and_then(|v| v.as_str())
+                .map(str::to_string)
+        })
+        .ok_or_else(|| {
+            format!(
+                "{}\n\nAuto-detect ran but could not determine a port. {}",
+                tier1_err,
+                detect_output.summary
+            )
+        })?;
+
+        ensure_serial_port_listed(&new_port).map_err(|e| {
+            format!(
+                "{}\n\nAuto-detect selected {} but it is still not available: {}",
+                tier1_err, new_port, e
+            )
+        })?;
+
+        let note = if new_port == original_port {
+            format!(
+                "Port {} was unavailable; auto-detect confirmed {} and continuing flash.",
+                original_port, new_port
+            )
+        } else {
+            format!(
+                "Port {} was unavailable; auto-detected {} and continuing flash.",
+                original_port, new_port
+            )
+        };
+
+        Ok((new_port, Some(note)))
+    }
+
     async fn flash_device(&self, config: &ESP32Config, args: &HashMap<String, Value>) -> Result<ToolOutput, String> {
-        let port = resolve_device_port(config, args, PortResolutionPolicy::PreferKnown).await?;
+        let (port, auto_detect_note) = self.resolve_flash_port_after_preflight(config, args).await?;
 
         // Infer project path
         let explicit_path = args.get("project_path").and_then(|v| v.as_str());
@@ -688,6 +776,13 @@ impl ESP32Device {
                 &SuggestionContext::new(),
             );
 
+            let summary = if let Some(ref note) = auto_detect_note {
+                format!("Flashed to {} in {:.1}s ({})", port, result.duration.as_secs_f64(), note)
+            } else {
+                format!("Flashed to {} in {:.1}s", port, result.duration.as_secs_f64())
+            };
+            let details = auto_detect_note.clone();
+
             Ok(ToolOutput {
                 status: super::output_protocol::ToolStatus::Success,
                 action_taken: "flash".to_string(),
@@ -696,9 +791,10 @@ impl ESP32Device {
                     "baud_rate": baud_rate,
                     "flash_time_seconds": result.duration.as_secs_f64(),
                     "project_path": project_path.to_string_lossy(),
+                    "auto_detected_port": auto_detect_note.is_some(),
                 }),
-                summary: format!("Flashed to {} in {:.1}s", port, result.duration.as_secs_f64()),
-                details: None,
+                summary,
+                details,
                 state_delta: super::session_state::StateDelta::none(),
                 suggested_actions,
                 error: None,
@@ -712,6 +808,11 @@ impl ESP32Device {
             );
 
             let error = result.errors.first().cloned();
+            let mut details = Some(result.combined_output());
+            if let Some(ref note) = auto_detect_note {
+                let combined = format!("{}\n\n{}", note, details.as_deref().unwrap_or(""));
+                details = Some(combined);
+            }
 
             Ok(ToolOutput {
                 status: super::output_protocol::ToolStatus::Failed,
@@ -719,9 +820,10 @@ impl ESP32Device {
                 data: serde_json::json!({
                     "port": port,
                     "error_count": result.errors.len(),
+                    "auto_detected_port": auto_detect_note.is_some(),
                 }),
                 summary: format!("Flash failed: {}", result.summary),
-                details: Some(result.combined_output()),
+                details,
                 state_delta: super::session_state::StateDelta::none(),
                 suggested_actions,
                 error,
@@ -731,6 +833,7 @@ impl ESP32Device {
 
     async fn monitor_device(&self, config: &ESP32Config, args: &HashMap<String, Value>) -> Result<ToolOutput, String> {
         let port = resolve_device_port(config, args, PortResolutionPolicy::RequireKnown).await?;
+        ensure_serial_port_listed(&port)?;
 
         let project_path = args.get("project_path")
             .and_then(|v| v.as_str())
