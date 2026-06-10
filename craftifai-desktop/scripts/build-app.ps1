@@ -43,6 +43,142 @@ function Write-Bold($msg) { Write-Host $msg -ForegroundColor White }
 function Write-Info($msg) { Write-Host "  -> $msg" -ForegroundColor Cyan }
 function Write-Ok($msg)   { Write-Host "  [OK] $msg" -ForegroundColor Green }
 function Write-Err($msg)  { Write-Host "  [ERR] $msg" -ForegroundColor Red }
+function Write-Warn($msg) { Write-Host "  [WARN] $msg" -ForegroundColor Yellow }
+
+function Stop-ListeningOnPort([int]$Port) {
+    try {
+        $pids = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
+            Select-Object -ExpandProperty OwningProcess -Unique
+        foreach ($procId in $pids) {
+            if ($procId -and $procId -gt 0) {
+                Write-Info "Stopping process on port $Port (PID $procId)..."
+                Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
+            }
+        }
+    } catch {
+        # Get-NetTCPConnection may be unavailable; ignore.
+    }
+}
+
+function Stop-CraftifDesktopProcesses {
+    Stop-ListeningOnPort 8486
+    Stop-ListeningOnPort 8002
+
+    try {
+        Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | ForEach-Object {
+            $path = $_.ExecutablePath
+            $name = $_.Name
+            if (-not $path -and -not $name) { return }
+            $shouldStop = $false
+            if ($path -like "*\craftifai-desktop\dist-packages\*") { $shouldStop = $true }
+            if ($name -eq "electron.exe" -and $path -like "*\craftifai-desktop\*") { $shouldStop = $true }
+            if ($name -like "CraftifAI ESP32 Agent.exe") { $shouldStop = $true }
+            if ($shouldStop) {
+                Write-Info "Stopping $($name) (PID $($_.ProcessId))..."
+                Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+            }
+        }
+    } catch {
+        # WMI may fail on some systems; port-based stop above is the main safeguard.
+    }
+}
+
+function Test-RepoOnOneDrive([string]$RootPath) {
+    return ($RootPath -match "OneDrive")
+}
+
+function Get-ElectronFallbackOutputDir() {
+    $fallbackOut = Join-Path $env:TEMP "craftifai-electron-dist"
+    if (Test-Path $fallbackOut) {
+        try {
+            Remove-Item -Recurse -Force $fallbackOut -ErrorAction Stop
+        } catch {
+            $fallbackOut = Join-Path $env:TEMP ("craftifai-electron-dist-" + (Get-Date -Format "yyyyMMddHHmmss"))
+        }
+    }
+    return $fallbackOut
+}
+
+function Copy-ElectronPackagesToDefault([string]$SourceDir, [string]$DefaultOut) {
+    if ($SourceDir -eq $DefaultOut) { return }
+
+    if (-not (Test-Path $DefaultOut)) {
+        New-Item -ItemType Directory -Path $DefaultOut -Force | Out-Null
+    }
+
+    $copied = @()
+    Get-ChildItem (Join-Path $SourceDir "*.exe") -ErrorAction SilentlyContinue | ForEach-Object {
+        try {
+            Copy-Item $_.FullName (Join-Path $DefaultOut $_.Name) -Force -ErrorAction Stop
+            $copied += $_.Name
+        } catch {
+            Write-Warn "Could not copy $($_.Name) to dist-packages: $($_.Exception.Message)"
+        }
+    }
+
+    if ($copied.Count -gt 0) {
+        Write-Ok ("Copied installer(s) to dist-packages: " + ($copied -join ", "))
+    }
+}
+
+function Resolve-ElectronOutputDir([string]$DesktopRoot, [string]$RepoRoot) {
+    $defaultOut = Join-Path $DesktopRoot "dist-packages"
+    $unpackDir = Join-Path $defaultOut "win-unpacked"
+
+    # OneDrive Sync Service often locks app.asar under win-unpacked; build outside sync instead.
+    if (Test-RepoOnOneDrive $RepoRoot) {
+        $fallbackOut = Get-ElectronFallbackOutputDir
+        Write-Warn "Repo is under OneDrive; electron-builder will use: $fallbackOut"
+        Write-Host "  Installers are copied back to craftifai-desktop\dist-packages after packaging." -ForegroundColor Yellow
+        Write-Host "  Tip: move the repo to C:\dev\ to avoid OneDrive locks during development." -ForegroundColor Yellow
+        Write-Host ""
+        return @{
+            BuildDir = $fallbackOut
+            DefaultOut = $defaultOut
+        }
+    }
+
+    if (-not (Test-Path $unpackDir)) {
+        return @{
+            BuildDir = $defaultOut
+            DefaultOut = $defaultOut
+        }
+    }
+
+    Stop-CraftifDesktopProcesses
+    Start-Sleep -Seconds 1
+
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        try {
+            Remove-Item -Recurse -Force $unpackDir -ErrorAction Stop
+            Write-Ok "Cleared dist-packages\win-unpacked"
+            return @{
+                BuildDir = $defaultOut
+                DefaultOut = $defaultOut
+            }
+        } catch {
+            if ($attempt -lt 3) {
+                Write-Warn "dist-packages\win-unpacked is locked (attempt $attempt/3); retrying..."
+                Stop-CraftifDesktopProcesses
+                Start-Sleep -Seconds 2
+            }
+        }
+    }
+
+    $fallbackOut = Get-ElectronFallbackOutputDir
+
+    Write-Warn "Could not remove locked dist-packages\win-unpacked (OneDrive or a running app may hold app.asar)."
+    Write-Warn "Building into fresh output folder: $fallbackOut"
+    Write-Host ""
+    Write-Host "  After build, you can delete the stale folder manually:" -ForegroundColor Yellow
+    Write-Host "    craftifai-desktop\dist-packages\win-unpacked"
+    Write-Host "  Tip: pause OneDrive sync or move the repo outside OneDrive\Desktop." -ForegroundColor Yellow
+    Write-Host ""
+    return @{
+        BuildDir = $fallbackOut
+        DefaultOut = $defaultOut
+    }
+}
 
 Write-Bold "============================================"
 Write-Bold " CraftifAI ESP32 Agent - Desktop Build (Win)"
@@ -89,12 +225,6 @@ if (-not $SkipGui) {
         if ($LASTEXITCODE -ne 0) { Write-Err "npm ci failed"; exit 1 }
     }
 
-    Write-Info "Syncing brand assets (logo, icons)..."
-    Push-Location $DesktopDir
-    npm run sync-brand-assets
-    if ($LASTEXITCODE -ne 0) { Write-Err "Brand asset sync failed"; exit 1 }
-    Pop-Location
-
     Write-Info "Building standalone app bundle (vite.app.config.ts)..."
     $env:VITE_REFACT_LSP_URL = "http://127.0.0.1:8486"
     $env:VITE_UPLOAD_API_URL = "http://127.0.0.1:8002"
@@ -121,8 +251,31 @@ if (-not $SkipPython) {
     Write-Bold "Phase 3/4 - Bundling Python API"
     Write-Info "Staging Python files into api-bundle\..."
 
-    if (Test-Path $ApiBundleDir) { Remove-Item -Recurse -Force $ApiBundleDir }
-    New-Item -ItemType Directory -Path $ApiBundleDir -Force | Out-Null
+    # Stop local API on 8002 if it holds a lock on api-bundle (desktop app / test uvicorn).
+    try {
+        $port8002 = Get-NetTCPConnection -LocalPort 8002 -State Listen -ErrorAction SilentlyContinue |
+            Select-Object -ExpandProperty OwningProcess -Unique
+        foreach ($procId in $port8002) {
+            if ($procId -and $procId -gt 0) {
+                Write-Info "Stopping process on port 8002 (PID $procId) so api-bundle can be updated..."
+                Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
+            }
+        }
+        if ($port8002) { Start-Sleep -Seconds 1 }
+    } catch {
+        # Get-NetTCPConnection may be unavailable; build continues with copy-over fallback.
+    }
+
+    if (Test-Path $ApiBundleDir) {
+        try {
+            Remove-Item -Recurse -Force $ApiBundleDir
+        } catch {
+            Write-Warn "api-bundle is locked; syncing files in place (close CraftifAI app if copy fails)."
+        }
+    }
+    if (-not (Test-Path $ApiBundleDir)) {
+        New-Item -ItemType Directory -Path $ApiBundleDir -Force | Out-Null
+    }
 
     Copy-Item (Join-Path $RepoRoot "refactapi.py")     $ApiBundleDir -Force
     Copy-Item (Join-Path $RepoRoot "requirements.txt") $ApiBundleDir -Force
@@ -147,6 +300,10 @@ Write-Host ""
 # Phase 4 — Build Electron + package
 # ─────────────────────────────────────────────────────────────────────────────
 Write-Bold "Phase 4/4 - Building Electron app"
+$electronOut = Resolve-ElectronOutputDir $DesktopDir $RepoRoot
+$electronOutDir = $electronOut.BuildDir
+$electronDefaultOut = $electronOut.DefaultOut
+$electronOutArgs = @("--config.directories.output=$electronOutDir")
 Push-Location $DesktopDir
 
 if (-not (Test-Path "node_modules")) {
@@ -155,54 +312,33 @@ if (-not (Test-Path "node_modules")) {
     if ($LASTEXITCODE -ne 0) { Write-Err "npm ci failed"; exit 1 }
 }
 
-# ── winCodeSign Symlink Extraction Workaround ──────────────────────────────
-$CacheDir = Join-Path $env:LOCALAPPDATA "electron-builder\Cache\winCodeSign"
-$TargetDir = Join-Path $CacheDir "winCodeSign-2.6.0"
-if (-not (Test-Path $TargetDir)) {
-    Write-Bold "Pre-extracting winCodeSign to avoid symlink errors..."
-    if (Test-Path $CacheDir) {
-        $7zFiles = Get-ChildItem -Path $CacheDir -Filter "*.7z" | Sort-Object LastWriteTime -Descending
-        if ($7zFiles.Count -gt 0) {
-            $Archive = $7zFiles[0].FullName
-            $7za = Join-Path $DesktopDir "node_modules\7zip-bin\win\x64\7za.exe"
-            if (Test-Path $7za) {
-                Write-Info "Extracting $Archive to $TargetDir (excluding macOS and Linux binaries)..."
-                New-Item -ItemType Directory -Path $TargetDir -Force | Out-Null
-                & $7za x $Archive "-o$TargetDir" -y "-x!darwin" "-x!linux"
-                if ($LASTEXITCODE -eq 0) {
-                    Write-Ok "winCodeSign pre-extracted successfully."
-                } else {
-                    Write-Err "Failed to pre-extract winCodeSign."
-                }
-            } else {
-                Write-Err "7za.exe not found at $7za."
-            }
-        } else {
-            Write-Err "No winCodeSign .7z archive found in cache to extract."
-        }
-    } else {
-        Write-Err "winCodeSign cache directory not found: $CacheDir"
-    }
-}
-# ─────────────────────────────────────────────────────────────────────────────
+$env:CSC_IDENTITY_AUTO_DISCOVERY = "false"
 
 if ($NsisOnly) {
     Write-Info "Packaging as NSIS installer only..."
-    npm run build:win-nsis
+    npx electron-builder --win nsis @electronOutArgs
 } else {
     Write-Info "Packaging as NSIS + portable..."
-    npm run build:win-all
+    npx electron-builder --win nsis portable @electronOutArgs
 }
+if ($LASTEXITCODE -ne 0) { Write-Err "electron-builder failed"; exit 1 }
 
 Pop-Location
+
+Copy-ElectronPackagesToDefault $electronOutDir $electronDefaultOut
 
 Write-Host ""
 Write-Bold "============================================"
 Write-Ok "Build complete!"
 Write-Host ""
 Write-Host "  Output packages:"
-Get-ChildItem (Join-Path $DesktopDir "dist-packages\*.exe") -ErrorAction SilentlyContinue |
-    ForEach-Object { Write-Host ("    {0} ({1:N1} MB)" -f $_.Name, ($_.Length / 1MB)) }
+Get-ChildItem (Join-Path $electronDefaultOut "*.exe") -ErrorAction SilentlyContinue |
+    ForEach-Object { Write-Host ("    {0} ({1:N1} MB)" -f $_.FullName, ($_.Length / 1MB)) }
+if ($electronOutDir -ne $electronDefaultOut) {
+    Write-Host ""
+    Write-Host "  Intermediate build artifacts:" -ForegroundColor DarkGray
+    Write-Host "    $electronOutDir" -ForegroundColor DarkGray
+}
 Write-Host ""
 Write-Bold "  To run now (without packaging):"
 Write-Host "  cd craftifai-desktop && npm run dev"

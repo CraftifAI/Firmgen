@@ -35,7 +35,6 @@ import { DialogImage } from "../DialogImage";
 import { RootState } from "../../app/store";
 import { selectFeatures } from "../../features/Config/configSlice";
 import { isRawTextDocToolCall } from "../Tools/types";
-import { TextDocTool } from "../Tools/Textdoc";
 import { MarkdownCodeBlock } from "../Markdown/CodeBlock";
 import classNames from "classnames";
 import resultStyle from "react-syntax-highlighter/dist/esm/styles/hljs/arta";
@@ -63,12 +62,8 @@ function getToolCallStage(functionName: string, args: string): PipelineStage {
 
   if (name === "esp32_device" && operation.includes("monitor"))
     return "MONITORING";
-  if (
-    name === "esp32_device" &&
-    (operation.includes("detect") ||
-      operation.includes("flash") ||
-      operation.includes("erase"))
-  )
+  if (name === "esp32_device" &&
+    (operation.includes("detect") || operation.includes("flash") || operation.includes("erase")))
     return "FLASH";
   if (name === "esp32_build" &&
     (operation.includes("build") || operation.includes("clean") || operation.includes("reconfigure")))
@@ -358,14 +353,8 @@ function processToolCalls(
   }
 
   if (isRawTextDocToolCall(head)) {
-    const elem = (
-      <TextDocTool
-        key={`textdoc-tool-${head.function.name}-${processed.length}`}
-        toolCall={head}
-        toolFailed={result?.tool_failed}
-      />
-    );
-    return processToolCalls(tail, toolResults, features, [...processed, elem]);
+    // File edits render via GroupedDiffs; skip legacy TextDoc preview.
+    return processToolCalls(tail, toolResults, features, processed);
   }
 
   if (result && isMultiModalToolResult(result)) {

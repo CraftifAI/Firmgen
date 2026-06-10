@@ -1,272 +1,26 @@
-import React, { useCallback, useRef } from "react";
-import { Text, Container, Box, Flex, Link } from "@radix-ui/themes";
+import React, { useCallback, useMemo, useRef, useState } from "react";
+import { Container, Flex } from "@radix-ui/themes";
 import { DiffMessage, type DiffChunk } from "../../services/refact";
-import { ScrollArea } from "../ScrollArea";
-import styles from "./ChatContent.module.css";
-import { filename } from "../../utils";
 import * as Collapsible from "@radix-ui/react-collapsible";
-import { Chevron } from "../Collapsible";
+import { ChevronDownIcon } from "@radix-ui/react-icons";
+import { FileDiff } from "lucide-react";
 import groupBy from "lodash.groupby";
-import { TruncateLeft } from "../Text";
-import { useHideScroll, useEventsBusForIDE } from "../../hooks";
-import { FadedButton } from "../Buttons";
-
-type DiffType = "apply" | "unapply" | "error" | "can not apply";
-
-const DiffLine: React.FC<{
-  lineNumber?: number;
-  sign: string;
-  line: string;
-}> = ({ lineNumber, sign, line }) => {
-  const backgroundColorLeft = sign === "-" ? "#592e30" : "#3b5840";
-  const backgroundColor = sign === "-" ? "#3e2628" : "#2c3e33";
-  return (
-    <Flex className={styles.diff_line} style={{ minWidth: "min-content" }}>
-      <Text
-        size="2"
-        className={styles.diff_line_number}
-        style={{ backgroundColor: backgroundColorLeft }}
-      >
-        {lineNumber ?? ""}
-      </Text>
-      <Text size="2" className={styles.diff_sign} style={{ backgroundColor }}>
-        {sign}
-      </Text>
-      <Text
-        size="2"
-        className={styles.diff_line_content}
-        style={{
-          backgroundColor,
-          whiteSpace: "pre",
-          whiteSpaceTrim: "none",
-          minWidth: "min-content",
-        }}
-      >
-        {line}
-      </Text>
-    </Flex>
-  );
-};
-
-const DiffHighlight: React.FC<{
-  startLine?: number;
-  sign: string;
-  text: string;
-}> = ({ startLine, sign, text }) => {
-  const lines = text.split("\n");
-  return (
-    <Flex
-      direction="column"
-      style={{ minWidth: "min-content", alignSelf: "stretch", width: "100%" }}
-    >
-      {lines.map((line, index) => {
-        return (
-          <DiffLine
-            key={index}
-            line={line}
-            sign={sign}
-            lineNumber={startLine ? index + startLine : undefined}
-          />
-        );
-      })}
-    </Flex>
-  );
-};
-
-type DiffProps = {
-  diff: DiffChunk;
-};
-
-export const Diff: React.FC<DiffProps> = ({ diff }) => {
-  const removeString = diff.lines_remove && diff.lines_remove;
-  const addString = diff.lines_add && diff.lines_add;
-  const isRename = diff.file_action === "rename" && diff.file_name_rename;
-
-  return (
-    <Flex
-      className={styles.diff}
-      py="2"
-      direction="column"
-      style={{ minWidth: "min-content" }}
-    >
-      {isRename && (
-        <Flex py="1" px="2">
-          <Text size="1" color="orange">
-            {filename(diff.file_name)} was renamed to{" "}
-            {filename(diff.file_name_rename ?? "")}
-          </Text>
-        </Flex>
-      )}
-      {removeString && !isRename && (
-        <DiffHighlight startLine={diff.line1} sign={"-"} text={removeString} />
-      )}
-      {addString && !isRename && (
-        <DiffHighlight startLine={diff.line1} sign={"+"} text={addString} />
-      )}
-    </Flex>
-  );
-};
+import { useHideScroll } from "../../hooks";
+import {
+  normalizeGroupedDiffs,
+  type DiffViewMode,
+} from "./diff/diffUtils";
+import {
+  DiffFileTabs,
+  DiffFileView,
+  DiffSummaryTitle,
+} from "./diff/DiffFileView";
+import diffStyles from "./diff/DiffContent.module.css";
+import classNames from "classnames";
 
 export type DiffChunkWithTypeAndApply = DiffChunk & {
-  type: DiffType;
+  type: "apply" | "unapply" | "error" | "can not apply";
   apply: boolean;
-};
-
-export const DiffTitle: React.FC<{
-  diffs: Record<string, DiffChunk[]>;
-}> = ({ diffs }): React.ReactNode[] => {
-  const entries = Object.entries(diffs);
-
-  function process(
-    items: [string, DiffChunk[]][],
-    memo: React.ReactNode[] = [],
-  ): React.ReactNode[] {
-    if (items.length === 0) return memo;
-    const [head, ...tail] = items;
-    const [fullPath, diffForFile] = head;
-    const name = filename(fullPath);
-
-    // Check if this is a rename action
-    const renameAction = diffForFile.find(
-      (diff) => diff.file_action === "rename" && diff.file_name_rename,
-    );
-
-    const addLength = diffForFile.reduce<number>((acc, diff) => {
-      return acc + (diff.lines_add ? diff.lines_add.split("\n").length : 0);
-    }, 0);
-    const removeLength = diffForFile.reduce<number>((acc, diff) => {
-      return (
-        acc + (diff.lines_remove ? diff.lines_remove.split("\n").length : 0)
-      );
-    }, 0);
-    const adds = "+".repeat(addLength);
-    const removes = "-".repeat(removeLength);
-
-    // Directly return the element based on condition
-    if (renameAction?.file_name_rename) {
-      // Display rename information
-      const newName = filename(renameAction.file_name_rename);
-      return process(
-        tail,
-        memo.length > 0
-          ? [
-              ...memo,
-              ", ",
-              <Text
-                style={{ display: "inline-block" }}
-                key={fullPath + "-" + diffForFile.length}
-              >
-                {name}{" "}
-                <Text color="orange" style={{ fontStyle: "italic" }}>
-                  → {newName}
-                </Text>
-              </Text>,
-            ]
-          : [
-              <Text
-                style={{ display: "inline-block" }}
-                key={fullPath + "-" + diffForFile.length}
-              >
-                {name}{" "}
-                <Text color="orange" style={{ fontStyle: "italic" }}>
-                  → {newName}
-                </Text>
-              </Text>,
-            ],
-      );
-    } else {
-      return process(
-        tail,
-        memo.length > 0
-          ? [
-              ...memo,
-              ", ",
-              <Text
-                style={{ display: "inline-block" }}
-                key={fullPath + "-" + diffForFile.length}
-              >
-                {name}{" "}
-                <Text
-                  color="red"
-                  wrap="wrap"
-                  style={{ wordBreak: "break-all" }}
-                >
-                  {removes}
-                </Text>
-                <Text
-                  color="green"
-                  wrap="wrap"
-                  style={{ wordBreak: "break-all" }}
-                >
-                  {adds}
-                </Text>
-              </Text>,
-            ]
-          : [
-              <Text
-                style={{ display: "inline-block" }}
-                key={fullPath + "-" + diffForFile.length}
-              >
-                {name}{" "}
-                <Text
-                  color="red"
-                  wrap="wrap"
-                  style={{ wordBreak: "break-all" }}
-                >
-                  {removes}
-                </Text>
-                <Text
-                  color="green"
-                  wrap="wrap"
-                  style={{ wordBreak: "break-all" }}
-                >
-                  {adds}
-                </Text>
-              </Text>,
-            ],
-      );
-    }
-
-    // const nextMemo = memo.length > 0 ? [...memo, ", ", element] : [element];
-
-    // return process(tail, nextMemo);
-  }
-
-  return process(entries);
-};
-
-export const DiffContent: React.FC<{
-  diffs: Record<string, DiffChunk[]>;
-}> = ({ diffs }) => {
-  const [open, setOpen] = React.useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const handleScroll = useHideScroll(ref);
-
-  const handleHide = useCallback(() => {
-    setOpen(false);
-    handleScroll();
-  }, [handleScroll]);
-
-  return (
-    <Collapsible.Root open={open} onOpenChange={setOpen}>
-      <Collapsible.Trigger asChild>
-        <Flex gap="2" align="center" ref={ref}>
-          <Text weight="light" size="1">
-            <DiffTitle diffs={diffs} />
-          </Text>
-          <Chevron open={open} />
-        </Flex>
-      </Collapsible.Trigger>
-      <Collapsible.Content>
-        <Flex direction="column">
-          <DiffForm diffs={diffs} />
-          <FadedButton color="gray" onClick={handleHide} mx="2">
-            Hide Diff
-          </FadedButton>
-        </Flex>
-      </Collapsible.Content>
-    </Collapsible.Root>
-  );
 };
 
 export type DiffWithStatus = DiffChunk & {
@@ -276,70 +30,112 @@ export type DiffWithStatus = DiffChunk & {
   index: number;
 };
 
+/** @deprecated Use DiffSummaryTitle — kept for story/tests compatibility */
+export const DiffTitle: React.FC<{
+  diffs: Record<string, DiffChunk[]>;
+}> = ({ diffs }) => {
+  const files = useMemo(() => normalizeGroupedDiffs(diffs), [diffs]);
+  return <DiffSummaryTitle files={files} />;
+};
+
+export const DiffContent: React.FC<{
+  diffs: Record<string, DiffChunk[]>;
+}> = ({ diffs }) => {
+  const files = useMemo(() => normalizeGroupedDiffs(diffs), [diffs]);
+  const [open, setOpen] = useState(true);
+  const [activeFileIndex, setActiveFileIndex] = useState(0);
+  const [viewMode, setViewMode] = useState<DiffViewMode>("split");
+  const [showUnchanged, setShowUnchanged] = useState(true);
+  const ref = useRef<HTMLButtonElement>(null);
+  const handleScroll = useHideScroll(ref);
+
+  const activeFile = files[activeFileIndex] ?? files[0];
+
+  const handleHide = useCallback(() => {
+    setOpen(false);
+    handleScroll();
+  }, [handleScroll]);
+
+  const handleViewModeChange = useCallback((mode: DiffViewMode) => {
+    setViewMode(mode);
+    if (mode === "full") {
+      setShowUnchanged(true);
+    }
+  }, []);
+
+  if (files.length === 0) return null;
+
+  const totalChanges = files.reduce(
+    (acc, file) => acc + file.stats.additions + file.stats.deletions,
+    0,
+  );
+
+  return (
+    <Collapsible.Root open={open} onOpenChange={setOpen} className={diffStyles.diffDisclosure}>
+      <Collapsible.Trigger asChild>
+        <button
+          type="button"
+          ref={ref}
+          className={classNames(diffStyles.diffDisclosureTrigger, {
+            [diffStyles.diffDisclosureTriggerOpen]: open,
+          })}
+          aria-expanded={open}
+        >
+          <span className={diffStyles.diffDisclosureIconWrap}>
+            <FileDiff size={16} strokeWidth={2} />
+          </span>
+          <span className={diffStyles.diffDisclosureBody}>
+            <span className={diffStyles.diffDisclosureLabel}>File changes</span>
+            <DiffSummaryTitle files={files} />
+          </span>
+          <span className={diffStyles.diffDisclosureMeta}>
+            {totalChanges} line{totalChanges === 1 ? "" : "s"}
+          </span>
+          <ChevronDownIcon
+            className={classNames(diffStyles.diffDisclosureChevron, {
+              [diffStyles.diffDisclosureChevronOpen]: open,
+            })}
+          />
+        </button>
+      </Collapsible.Trigger>
+      <Collapsible.Content className={diffStyles.diffDisclosureContent}>
+        <Flex direction="column" gap="2" py="2" px="1">
+          <DiffFileTabs
+            files={files}
+            activeIndex={activeFileIndex}
+            onSelect={setActiveFileIndex}
+          />
+          {activeFile && (
+            <DiffFileView
+              fileDiff={activeFile}
+              viewMode={viewMode}
+              showUnchanged={showUnchanged}
+              enabled={open}
+              onViewModeChange={handleViewModeChange}
+              onShowUnchangedChange={setShowUnchanged}
+            />
+          )}
+          <button
+            type="button"
+            className={diffStyles.collapseFooterButton}
+            onClick={handleHide}
+          >
+            Collapse diff
+          </button>
+        </Flex>
+      </Collapsible.Content>
+    </Collapsible.Root>
+  );
+};
+
+/** @deprecated Inline diff rows replaced by split view — export retained for tests */
+export const Diff: React.FC<{ diff: DiffChunk }> = () => null;
+
+/** @deprecated Use DiffContent internals — export retained for tests */
 export const DiffForm: React.FC<{
   diffs: Record<string, DiffChunk[]>;
 }> = ({ diffs }) => {
-  const { openFile } = useEventsBusForIDE();
-  return (
-    <Flex direction="column" maxWidth="100%" py="2" gap="2">
-      {Object.entries(diffs).map(([fullFilePath, diffsForFile], index) => {
-        const key = fullFilePath + "-" + index;
-
-        // Check if this is a rename action
-        const renameAction = diffsForFile.find(
-          (diff) => diff.file_action === "rename" && diff.file_name_rename,
-        );
-
-        return (
-          <Box key={key} my="2">
-            <Flex justify="between" align="center" p="1">
-              <TruncateLeft size="1">
-                <Link
-                  // TODO: check how ides treat this being "", undefined, or "#"
-                  href=""
-                  onClick={(event) => {
-                    event.preventDefault();
-                    const startLine = Math.min(
-                      ...diffsForFile.map((diff) => diff.line1),
-                    );
-                    openFile({
-                      file_path: fullFilePath,
-                      line: startLine,
-                    });
-                  }}
-                >
-                  <Text
-                    as="span"
-                    color={
-                      renameAction?.file_name_rename ? "orange" : undefined
-                    }
-                  >
-                    {renameAction?.file_name_rename
-                      ? renameAction.file_name_rename
-                      : fullFilePath}
-                  </Text>
-                </Link>
-              </TruncateLeft>
-            </Flex>
-            <ScrollArea scrollbars="horizontal" asChild>
-              <Box style={{ minWidth: "100%", position: "relative" }}>
-                <Box
-                  style={{
-                    background: "rgb(51, 51, 51)",
-                    minWidth: "min-content",
-                  }}
-                >
-                  {diffsForFile.map((diff, i) => (
-                    <Diff key={`${fullFilePath}-${index}-${i}`} diff={diff} />
-                  ))}
-                </Box>
-              </Box>
-            </ScrollArea>
-          </Box>
-        );
-      })}
-    </Flex>
-  );
+  return <DiffContent diffs={diffs} />;
 };
 
 type GroupedDiffsProps = {

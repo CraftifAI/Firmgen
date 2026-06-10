@@ -1,9 +1,6 @@
 import { beforeAll, afterEach, afterAll, vi } from "vitest";
-import {
-  stubResizeObserver,
-  cleanup,
-  stubIntersectionObserver,
-} from "./test-utils";
+import { cleanup } from "@testing-library/react";
+import { stubResizeObserver, stubIntersectionObserver } from "./test-dom-stubs";
 import MatchMediaMock from "vitest-matchmedia-mock";
 import React from "react";
 const matchMediaMock = new MatchMediaMock();

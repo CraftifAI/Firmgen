@@ -1,5 +1,4 @@
 import { PropsWithChildren, ReactElement } from "react";
-import { vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { render, RenderOptions } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -92,16 +91,7 @@ export function postMessage(data: unknown) {
 //   postMessage(systemPromptsMessage);
 // }
 
-export function stubResizeObserver() {
-  const ResizeObserverMock = vi.fn(() => ({
-    observe: vi.fn(),
-    unobserve: vi.fn(),
-    disconnect: vi.fn(),
-  }));
-
-  // Stub the global ResizeObserver
-  vi.stubGlobal("ResizeObserver", ResizeObserverMock);
-}
+export { stubResizeObserver, stubIntersectionObserver } from "./test-dom-stubs";
 
 /**
  * repeat use with describe.each or test.each to find flaky tests
@@ -111,13 +101,3 @@ export function stubResizeObserver() {
  */
 export const repeat = (n: number) =>
   Array.from({ length: n }).map((_d, i) => i + 1);
-
-export function stubIntersectionObserver() {
-  const mockIntersectionObserver = vi.fn();
-  mockIntersectionObserver.mockReturnValue({
-    observe: () => null,
-    unobserve: () => null,
-    disconnect: () => null,
-  });
-  vi.stubGlobal("IntersectionObserver", mockIntersectionObserver);
-}
