@@ -20,6 +20,11 @@ use crate::http::routers::v1::esp32_project_sources::{
     handle_v1_esp32_project_sources_upload,
     handle_v1_esp32_project_sources_open,
 };
+use crate::http::routers::v1::esp32_project_tree::{
+    handle_v1_esp32_project_tree_list,
+    handle_v1_esp32_project_tree_open,
+    handle_v1_esp32_chat_project_path,
+};
 use crate::http::routers::v1::progress::handle_v1_progress;
 use crate::http::routers::v1::chat::{handle_v1_chat, handle_v1_chat_completions, handle_v1_chat_payload_debug};
 use crate::http::routers::v1::chat_based_handlers::{handle_v1_commit_message_from_diff, handle_v1_trajectory_compress};
@@ -47,6 +52,7 @@ use crate::http::routers::v1::providers::{handle_v1_providers, handle_v1_provide
 use crate::http::routers::v1::vecdb::{handle_v1_vecdb_search, handle_v1_vecdb_status};
 use crate::http::routers::v1::v1_integrations::{handle_v1_integration_get, handle_v1_integration_icon, handle_v1_integration_save, handle_v1_integration_delete, handle_v1_integrations, handle_v1_integrations_filtered, handle_v1_integrations_mcp_logs};
 use crate::http::routers::v1::file_edit_tools::handle_v1_file_edit_tool_dry_run;
+use crate::http::routers::v1::workspace_file::handle_v1_workspace_file_content;
 use crate::http::routers::v1::workspace::{handle_v1_get_app_searchable_id, handle_v1_set_active_group_id};
 use crate::http::routers::v1::workflow::{
     handle_v1_workflow_get, handle_v1_workflow_create, handle_v1_workflow_cancel,
@@ -64,6 +70,7 @@ pub mod esp32_config;
 pub mod esp32_factory_release;
 pub mod esp32_project_workspace;
 pub mod esp32_project_sources;
+pub mod esp32_project_tree;
 pub mod progress;
 pub mod chat;
 pub mod chat_based_handlers;
@@ -86,6 +93,7 @@ pub mod telemetry_chat;
 pub mod telemetry_network;
 pub mod providers;
 mod file_edit_tools;
+mod workspace_file;
 mod v1_integrations;
 pub mod vecdb;
 mod workflow;
@@ -115,6 +123,9 @@ pub fn make_v1_router() -> Router {
         .route("/esp32/project-sources", get(handle_v1_esp32_project_sources_list))
         .route("/esp32/project-sources", post(handle_v1_esp32_project_sources_upload))
         .route("/esp32/project-sources/open", post(handle_v1_esp32_project_sources_open))
+        .route("/esp32/project-tree", get(handle_v1_esp32_project_tree_list))
+        .route("/esp32/project-tree/open", post(handle_v1_esp32_project_tree_open))
+        .route("/esp32/chat-project-path", get(handle_v1_esp32_chat_project_path))
         .route("/progress", get(handle_v1_progress))
 
         .route("/tools", get(handle_v1_get_tools))
@@ -167,7 +178,8 @@ pub fn make_v1_router() -> Router {
         .route("/links", post(handle_v1_links))
 
         .route("/file_edit_tool_dry_run", post(handle_v1_file_edit_tool_dry_run))
-        
+        .route("/workspace-file-content", post(handle_v1_workspace_file_content))
+
         .route("/providers", get(handle_v1_providers))
         .route("/provider-templates", get(handle_v1_provider_templates))
         .route("/provider", get(handle_v1_get_provider))

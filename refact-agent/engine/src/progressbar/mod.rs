@@ -255,6 +255,7 @@ pub struct ProgressSessionDto {
     pub is_debugging: bool,
     /// Number of error→fix iterations at the current locked stage.
     pub debug_iteration: u32,
+    pub esp32_project_path: Option<String>,
 }
 
 /// Error details for failed or partially failed tool calls.
@@ -1250,6 +1251,8 @@ pub async fn get_progress(chat_id: &str) -> Option<ProgressSessionDto> {
         has_error,
         is_debugging,
         debug_iteration,
+        esp32_project_path: project_path_from_events(&session.events)
+            .map(|p| p.to_string_lossy().to_string()),
     })
 }
 
@@ -1283,18 +1286,7 @@ fn project_path_from_events(events: &[Esp32ToolEvent]) -> Option<PathBuf> {
 }
 
 fn project_path_from_tool_event(e: &Esp32ToolEvent) -> Option<&str> {
-    if e.tool_name == "esp32_project" && e.operation.to_lowercase().contains("create") {
-        if let Some(ref out) = e.output {
-            if let Some(ref data) = out.data {
-                if let Some(s) = data.get("project_path").and_then(|v| v.as_str()) {
-                    if !s.is_empty() {
-                        return Some(s);
-                    }
-                }
-            }
-        }
-    }
-    if e.tool_name == "esp32_build" {
+    if e.tool_name.starts_with("esp32_") {
         if let Some(s) = e.input_params.get("project_path").and_then(|v| v.as_str()) {
             if !s.is_empty() {
                 return Some(s);
@@ -1311,4 +1303,16 @@ fn project_path_from_tool_event(e: &Esp32ToolEvent) -> Option<&str> {
         }
     }
     None
+}
+
+pub async fn is_registered_project_path(path: &std::path::Path) -> bool {
+    let store = PROGRESS_STORE.read().await;
+    for session in store.values() {
+        if let Some(p) = project_path_from_events(&session.events) {
+            if p == path {
+                return true;
+            }
+        }
+    }
+    false
 }

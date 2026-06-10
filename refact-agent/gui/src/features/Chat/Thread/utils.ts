@@ -6,6 +6,7 @@ import {
   ChatMessages,
   ChatResponse,
   DiffChunk,
+  DiffMessage,
   SubchatResponse,
   ToolCall,
   ToolMessage,
@@ -652,6 +653,30 @@ export function formatMessagesForLsp(messages: ChatMessages): LspChatMessage[] {
   }, []);
 }
 
+export function parseDiffChunksFromContent(content: unknown): DiffChunk[] {
+  if (Array.isArray(content)) {
+    return content.filter(isDiffChunk);
+  }
+  if (typeof content === "string") {
+    return parseOrElse<DiffChunk[]>(content, []).filter(isDiffChunk);
+  }
+  return [];
+}
+
+export function normalizeChatMessages(messages: ChatMessages): ChatMessages {
+  return messages.map((message) => {
+    if (message.role !== "diff") return message;
+    const chunks = parseDiffChunksFromContent(message.content);
+    if (chunks.length === 0) return message;
+    const diffMessage = message as DiffMessage;
+    return {
+      role: "diff",
+      content: chunks,
+      tool_call_id: diffMessage.tool_call_id,
+    };
+  });
+}
+
 export function formatMessagesForChat(
   messages: LspChatMessage[],
 ): ChatMessages {
@@ -709,17 +734,15 @@ export function formatMessagesForChat(
       return acc.concat(message as unknown as ToolMessage);
     }
 
-    if (
-      message.role === "diff" &&
-      Array.isArray(message.content) &&
-      message.content.every(isDiffChunk) &&
-      typeof message.tool_call_id === "string"
-    ) {
-      return acc.concat({
-        role: message.role,
-        content: message.content,
-        tool_call_id: message.tool_call_id,
-      });
+    if (message.role === "diff" && typeof message.tool_call_id === "string") {
+      const content = parseDiffChunksFromContent(message.content);
+      if (content.length > 0) {
+        return acc.concat({
+          role: message.role,
+          content,
+          tool_call_id: message.tool_call_id,
+        });
+      }
     }
 
     return acc;

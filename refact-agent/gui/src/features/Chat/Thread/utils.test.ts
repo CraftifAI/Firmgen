@@ -8,7 +8,7 @@ import {
   UserMessageResponse,
   type ToolCall,
 } from "../../../services/refact";
-import { mergeToolCalls, formatChatResponse, consumeStream } from "./utils";
+import { mergeToolCalls, formatChatResponse, consumeStream, formatMessagesForChat, normalizeChatMessages, parseDiffChunksFromContent } from "./utils";
 
 describe("formatChatResponse", () => {
   test("it should replace the last user message", () => {
@@ -1729,5 +1729,47 @@ describe("consumeStream", () => {
     expect(onChunk).toHaveBeenCalledWith({
       content: '```py\nprint("hello")\n\n```\n',
     });
+  });
+});
+
+describe("parseDiffChunksFromContent", () => {
+  test("parses JSON string diff content from persisted history", () => {
+    const json =
+      '[{"file_name": "/a.c", "file_action": "edit", "line1": 1, "line2": 1, "lines_remove": "old\\n", "lines_add": "new\\n"}]';
+    const chunks = parseDiffChunksFromContent(json);
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0]?.lines_add).toBe("new\n");
+  });
+
+  test("formatMessagesForChat restores diff messages with string content", () => {
+    const messages = formatMessagesForChat([
+      {
+        role: "diff",
+        content:
+          '[{"file_name": "/a.c", "file_action": "edit", "line1": 1, "line2": 1, "lines_remove": "old\\n", "lines_add": "new\\n"}]',
+        tool_call_id: "call-1",
+      },
+    ] as Parameters<typeof formatMessagesForChat>[0]);
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.role).toBe("diff");
+    if (messages[0]?.role === "diff") {
+      expect(messages[0].content).toHaveLength(1);
+    }
+  });
+
+  test("normalizeChatMessages coerces string diff content in thread state", () => {
+    const normalized = normalizeChatMessages([
+      {
+        role: "diff",
+        content:
+          '[{"file_name": "/b.c", "file_action": "edit", "line1": 2, "line2": 2, "lines_remove": "x\\n", "lines_add": "y\\n"}]',
+        tool_call_id: "call-2",
+      },
+    ] as unknown as ChatMessages);
+    expect(normalized[0]?.role).toBe("diff");
+    if (normalized[0]?.role === "diff") {
+      expect(Array.isArray(normalized[0].content)).toBe(true);
+      expect(normalized[0].content[0]?.lines_add).toBe("y\n");
+    }
   });
 });

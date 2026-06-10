@@ -8,6 +8,7 @@ import {
   isUserMessage,
 } from "../../../services/refact/types";
 import { takeFromLast } from "../../../utils/takeFromLast";
+import { normalizeChatMessages } from "./utils";
 
 export const selectThread = (state: RootState) => state.chat.thread;
 export const selectThreadTitle = (state: RootState) => state.chat.thread.title;
@@ -15,7 +16,10 @@ export const selectChatId = (state: RootState) => state.chat.thread.id;
 export const selectSubchatUsageTotal = (state: RootState) => state.chat.thread.subchat_usage_total;
 export const selectSubchatUsageByTool = (state: RootState) => state.chat.thread.subchat_usage_by_tool;
 export const selectModel = (state: RootState) => state.chat.thread.model;
-export const selectMessages = (state: RootState) => state.chat.thread.messages;
+export const selectMessages = createSelector(
+  (state: RootState) => state.chat.thread.messages,
+  (messages) => normalizeChatMessages(messages),
+);
 export const selectToolUse = (state: RootState) => state.chat.tool_use;
 export const selectThreadToolUse = (state: RootState) =>
   state.chat.thread.tool_use;

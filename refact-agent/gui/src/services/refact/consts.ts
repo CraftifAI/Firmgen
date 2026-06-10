@@ -9,6 +9,7 @@ export const TOOLS = "/v1/tools";
 export const TOOLS_CHECK_CONFIRMATION =
   "/v1/tools-check-if-confirmation-needed";
 export const EDIT_TOOL_DRY_RUN_URL = "/v1/file_edit_tool_dry_run";
+export const WORKSPACE_FILE_CONTENT_URL = "/v1/workspace-file-content";
 export const CONFIG_PATH_URL = "/v1/config-path";
 export const FULL_PATH_URL = "/v1/fullpath";
 // TODO: add a service for the docs.

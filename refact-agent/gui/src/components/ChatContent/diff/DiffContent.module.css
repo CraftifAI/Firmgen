@@ -1,0 +1,636 @@
+.diffPanel {
+  border: 1px solid rgb(255 255 255 / 0.12);
+  border-radius: 8px;
+  background: #000;
+  overflow: hidden;
+}
+
+.diffDisclosure {
+  border: 1px solid rgb(255 255 255 / 0.08);
+  border-radius: 12px;
+  background: linear-gradient(
+    180deg,
+    rgb(22 22 24 / 0.95),
+    rgb(16 16 18 / 0.98)
+  );
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.22);
+}
+
+.diffDisclosureTrigger {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease;
+}
+
+.diffDisclosureTrigger:hover {
+  background: rgb(255 255 255 / 0.035);
+}
+
+.diffDisclosureTriggerOpen {
+  border-bottom: 1px solid rgb(255 255 255 / 0.06);
+  background: rgb(255 255 255 / 0.02);
+}
+
+.diffDisclosureIconWrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: rgb(62 198 255 / 0.12);
+  color: rgb(62 198 255);
+}
+
+.diffDisclosureBody {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.diffDisclosureLabel {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgb(62 198 255 / 0.9);
+}
+
+.diffDisclosureMeta {
+  font-size: 11px;
+  color: var(--gray-10);
+  white-space: nowrap;
+}
+
+.diffDisclosureChevron {
+  color: var(--gray-11);
+  transition: transform 0.2s ease;
+}
+
+.diffDisclosureChevronOpen {
+  transform: rotate(180deg);
+}
+
+.diffDisclosureContent {
+  overflow: visible;
+}
+
+.diffDisclosureContent[data-state="open"] {
+  animation: diffDisclosureOpen 0.22s ease;
+}
+
+@keyframes diffDisclosureOpen {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.summaryTitleInner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.summaryFileCount {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gray-11);
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.05);
+}
+
+.summaryFileNames {
+  font-size: 12px;
+  color: var(--gray-12);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.collapseFooterButton {
+  align-self: center;
+  border: 1px solid rgb(255 255 255 / 0.08);
+  background: transparent;
+  color: var(--gray-11);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.collapseFooterButton:hover {
+  background: rgb(255 255 255 / 0.05);
+  color: var(--gray-12);
+}
+
+.hydrationBanner {
+  padding: 8px 12px;
+  font-size: 11px;
+  color: var(--gray-11);
+  background: rgb(62 198 255 / 0.08);
+  border-bottom: 1px solid rgb(255 255 255 / 0.06);
+}
+
+.hydrationError {
+  background: rgb(248 81 73 / 0.08);
+  color: #ffb4ae;
+}
+
+.loadingState {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 80px;
+  padding: 16px;
+  color: var(--gray-11);
+  font-size: 12px;
+}
+
+.diffSummaryTrigger {
+  cursor: pointer;
+  padding: 8px 12px;
+  border-radius: 8px;
+  transition: background 0.15s ease;
+}
+
+.diffSummaryTrigger:hover {
+  background: rgb(255 255 255 / 0.04);
+}
+
+.diffSummaryStats {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 6px;
+}
+
+.statAdd {
+  color: #3fb950;
+  font-weight: 600;
+  font-size: 11px;
+}
+
+.statDel {
+  color: #f85149;
+  font-weight: 600;
+  font-size: 11px;
+}
+
+.fileTabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px 8px 0;
+  overflow-x: auto;
+  border-bottom: 1px solid rgb(255 255 255 / 0.06);
+}
+
+.fileTab {
+  border: 1px solid transparent;
+  border-bottom: none;
+  background: transparent;
+  color: var(--gray-11);
+  padding: 6px 10px;
+  border-radius: 8px 8px 0 0;
+  cursor: pointer;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.fileTabActive {
+  background: #000;
+  border-color: rgb(255 255 255 / 0.12);
+  color: var(--gray-12);
+}
+
+.fileHeader {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgb(0 0 0 / 0.98);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid rgb(255 255 255 / 0.08);
+}
+
+.filePathLink {
+  font-size: 12px;
+  color: var(--gray-11);
+  min-width: 0;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.toolbarButton {
+  border: 1px solid rgb(255 255 255 / 0.1);
+  background: rgb(255 255 255 / 0.03);
+  color: var(--gray-11);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.toolbarButton:hover {
+  background: rgb(255 255 255 / 0.06);
+}
+
+.toolbarButtonActive {
+  border-color: rgb(62 198 255 / 0.45);
+  color: rgb(62 198 255);
+  background: rgb(62 198 255 / 0.08);
+}
+
+.splitContainer {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: min(420px, 55vh);
+  position: relative;
+  background: #000;
+  border-top: 1px solid rgb(255 255 255 / 0.06);
+}
+
+.splitHeaders {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-bottom: 1px solid rgb(255 255 255 / 0.08);
+  background: #000;
+}
+
+.splitPaneHeader {
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.splitPaneHeaderLeft {
+  color: var(--gray-11);
+  border-right: 1px solid rgb(255 255 255 / 0.06);
+}
+
+.splitPaneHeaderRight {
+  color: #3fb950;
+}
+
+.splitBody {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  min-width: min-content;
+  background: #000;
+}
+
+.splitScrollArea {
+  flex: 1;
+  min-height: 0;
+  max-height: min(360px, 45vh);
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: #000;
+  scrollbar-color: rgb(255 255 255 / 0.2) #000;
+  scrollbar-width: thin;
+}
+
+.splitScrollArea::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.splitScrollArea::-webkit-scrollbar-track {
+  background: #000;
+}
+
+.splitScrollArea::-webkit-scrollbar-thumb {
+  background: rgb(255 255 255 / 0.18);
+  border-radius: 999px;
+  border: 2px solid #000;
+}
+
+.splitScrollArea::-webkit-scrollbar-thumb:hover {
+  background: rgb(255 255 255 / 0.28);
+}
+
+.splitColumn {
+  overflow: visible;
+  border-right: 1px solid rgb(255 255 255 / 0.08);
+  min-height: 0;
+  min-width: max(320px, 50%);
+  background: #000;
+}
+
+.splitColumn:last-child {
+  border-right: none;
+}
+
+.virtualViewport {
+  flex: 1;
+  min-height: 280px;
+  max-height: min(460px, 48vh);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.diffScrollViewport {
+  flex: 1;
+  min-height: 280px;
+  max-height: min(460px, 48vh);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.diffRows {
+  min-width: min-content;
+  width: 100%;
+  background: #000;
+}
+
+.diffRow {
+  display: grid;
+  grid-template-columns: 48px 16px minmax(max-content, 1fr);
+  align-items: stretch;
+  min-height: 22px;
+  width: 100%;
+  background: #000;
+  font-family:
+    Consolas,
+    Monaco,
+    "Lucida Console",
+    Liberation Mono,
+    DejaVu Sans Mono,
+    Bitstream Vera Sans Mono,
+    "Courier New",
+    monospace;
+  font-size: 12px;
+  line-height: 22px;
+}
+
+.virtualContent {
+  position: relative;
+  width: 100%;
+}
+
+.virtualRow {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  grid-template-columns: 48px 16px 1fr;
+  align-items: stretch;
+  min-height: 22px;
+  font-family:
+    Consolas,
+    Monaco,
+    "Lucida Console",
+    Liberation Mono,
+    DejaVu Sans Mono,
+    Bitstream Vera Sans Mono,
+    "Courier New",
+    monospace;
+  font-size: 12px;
+  line-height: 22px;
+}
+
+.lineNumber {
+  text-align: right;
+  padding-right: 8px;
+  color: rgb(139 148 158);
+  user-select: none;
+  border-right: 1px solid rgb(255 255 255 / 0.06);
+  background: #000;
+}
+
+.sign {
+  text-align: center;
+  user-select: none;
+  color: rgb(139 148 158);
+  background: #000;
+}
+
+.lineContent {
+  padding: 0 12px 0 10px;
+  white-space: pre;
+  overflow: visible;
+  color: #e6edf3;
+  min-width: max-content;
+}
+
+.lineText {
+  display: inline;
+  color: inherit;
+}
+
+.rowContext .lineContent {
+  color: #c6cdd5;
+}
+
+.rowDelete {
+  background: rgb(248 81 73 / 0.24);
+}
+
+.rowDelete .lineNumber,
+.rowDelete .sign,
+.rowDelete .lineContent {
+  background: rgb(248 81 73 / 0.24);
+}
+
+.rowDelete .sign {
+  color: #ff7b72;
+}
+
+.rowInsert {
+  background: rgb(63 185 80 / 0.24);
+}
+
+.rowInsert .lineNumber,
+.rowInsert .sign,
+.rowInsert .lineContent {
+  background: rgb(63 185 80 / 0.24);
+}
+
+.rowInsert .sign {
+  color: #7ee787;
+}
+
+.rowChangeLeft {
+  background: rgb(248 81 73 / 0.24);
+}
+
+.rowChangeLeft .lineNumber,
+.rowChangeLeft .sign,
+.rowChangeLeft .lineContent {
+  background: rgb(248 81 73 / 0.24);
+}
+
+.rowChangeRight {
+  background: rgb(63 185 80 / 0.24);
+}
+
+.rowChangeRight .lineNumber,
+.rowChangeRight .sign,
+.rowChangeRight .lineContent {
+  background: rgb(63 185 80 / 0.24);
+}
+
+.rowGap {
+  background: rgb(255 255 255 / 0.04);
+}
+
+.rowGap .lineNumber,
+.rowGap .sign,
+.rowGap .lineContent {
+  background: rgb(255 255 255 / 0.04);
+}
+
+.rowGap .lineContent {
+  color: var(--gray-10);
+  font-style: italic;
+  text-align: center;
+}
+
+.lineContent :global(.hljs-keyword),
+.lineContent :global(.hljs-built_in),
+.lineContent :global(.hljs-type) {
+  color: #ff7b72;
+}
+
+.lineContent :global(.hljs-string),
+.lineContent :global(.hljs-regexp) {
+  color: #a5d6ff;
+}
+
+.lineContent :global(.hljs-number),
+.lineContent :global(.hljs-literal) {
+  color: #79c0ff;
+}
+
+.lineContent :global(.hljs-comment),
+.lineContent :global(.hljs-quote) {
+  color: #8b949e;
+  font-style: italic;
+}
+
+.lineContent :global(.hljs-function),
+.lineContent :global(.hljs-title) {
+  color: #d2a8ff;
+}
+
+.lineContent :global(.hljs-meta),
+.lineContent :global(.hljs-variable) {
+  color: #ffa657;
+}
+
+
+.minimap {
+  position: absolute;
+  top: 36px;
+  right: 4px;
+  width: 8px;
+  bottom: 4px;
+  border-radius: 4px;
+  background: rgb(255 255 255 / 0.08);
+  z-index: 2;
+  pointer-events: none;
+}
+
+.minimapMarker {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-radius: 2px;
+}
+
+.minimapDelete {
+  background: rgb(248 81 73 / 0.85);
+}
+
+.minimapInsert {
+  background: rgb(63 185 80 / 0.85);
+}
+
+.minimapChange {
+  background: rgb(210 153 34 / 0.85);
+}
+
+.renameBanner {
+  padding: 8px 12px;
+  color: #f0883e;
+  font-size: 12px;
+  border-bottom: 1px solid rgb(255 255 255 / 0.06);
+}
+
+.aiExplanation {
+  border-top: 1px solid rgb(255 255 255 / 0.08);
+  padding: 10px 12px;
+  background: rgb(0 0 0 / 0.92);
+}
+
+.aiExplanationTitle {
+  color: rgb(62 198 255);
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.aiExplanationBody {
+  color: var(--gray-11);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+@media (max-width: 760px) {
+  .splitContainer {
+    max-height: min(420px, 45vh);
+  }
+
+  .splitBody {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto;
+  }
+
+  .splitColumn {
+    min-width: 100%;
+    border-right: none;
+    border-bottom: 1px solid rgb(255 255 255 / 0.08);
+  }
+
+  .splitColumn:last-child {
+    border-bottom: none;
+  }
+
+  .toolbar {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+}

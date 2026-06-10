@@ -167,8 +167,8 @@ pub async fn create_esp_project_workspace_dir(
     Ok(canonicalize_normalized_path(full))
 }
 
-/// Ensure `<project_root>/sources` exists. Validates `project_root` the same way as workspace project folders.
-pub async fn ensure_project_sources_directory(
+/// Validate an absolute project workspace directory (without creating subfolders).
+pub async fn validate_project_root(
     gcx: Arc<ARwLock<GlobalContext>>,
     project_root: &Path,
 ) -> Result<PathBuf, String> {
@@ -184,8 +184,24 @@ pub async fn ensure_project_sources_directory(
     }
     let workspace_dirs = get_project_dirs(gcx.clone()).await;
     if !workspace_dirs.is_empty() {
-        check_if_its_inside_a_workspace_or_config(gcx.clone(), &root).await?;
+        if check_if_its_inside_a_workspace_or_config(gcx.clone(), &root).await.is_err()
+            && !crate::progressbar::is_registered_project_path(&root).await
+        {
+            return Err(format!(
+                "Path '{}' is outside allowed project directories",
+                root.display()
+            ));
+        }
     }
+    Ok(root)
+}
+
+/// Ensure `<project_root>/sources` exists. Validates `project_root` the same way as workspace project folders.
+pub async fn ensure_project_sources_directory(
+    gcx: Arc<ARwLock<GlobalContext>>,
+    project_root: &Path,
+) -> Result<PathBuf, String> {
+    let root = validate_project_root(gcx.clone(), project_root).await?;
     let sources = root.join("sources");
     std::fs::create_dir_all(&sources).map_err(|e| {
         format!(
@@ -223,4 +239,54 @@ pub fn sanitize_source_upload_filename(original: &str) -> Result<std::ffi::OsStr
         ));
     }
     Ok(file_name.to_os_string())
+}
+
+/// Validate an ESP-IDF project directory for tree/open APIs.
+/// Allows workspace folders, config `projects_path` descendants, and chat workspace overrides.
+pub async fn validate_esp32_agent_project_path(
+    gcx: Arc<ARwLock<GlobalContext>>,
+    project_root: &Path,
+) -> Result<PathBuf, String> {
+    if !project_root.is_absolute() {
+        return Err("project_root must be absolute".to_string());
+    }
+    let root = canonicalize_normalized_path(project_root.to_path_buf());
+    if !root.is_dir() {
+        return Err(format!(
+            "project_root is not a directory: {}",
+            root.display()
+        ));
+    }
+
+    let workspace_dirs = get_project_dirs(gcx.clone()).await;
+    if workspace_dirs.is_empty() {
+        return Ok(root);
+    }
+
+    if check_if_its_inside_a_workspace_or_config(gcx.clone(), &root)
+        .await
+        .is_ok()
+    {
+        return Ok(root);
+    }
+
+    if crate::progressbar::is_registered_project_path(&root).await {
+        return Ok(root);
+    }
+
+    use super::global_state::get_config;
+    if let Ok(config) = get_config().await {
+        let projects_path = PathBuf::from(config.projects_path.trim());
+        if projects_path.is_absolute() {
+            let canon_projects = canonicalize_normalized_path(projects_path);
+            if root.starts_with(&canon_projects) {
+                return Ok(root);
+            }
+        }
+    }
+
+    Err(format!(
+        "Path '{}' is outside allowed project directories",
+        root.display()
+    ))
 }
