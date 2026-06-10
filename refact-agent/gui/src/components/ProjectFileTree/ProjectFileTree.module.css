@@ -1,0 +1,110 @@
+.projectFileTreeRoot {
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--sidebar-border);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 280px;
+}
+
+.projectFileTreeContent {
+  padding: 0 var(--space-2) var(--space-2);
+  min-height: 0;
+  flex: 1;
+}
+
+.projectFileTreeScroll {
+  max-height: 220px;
+}
+
+.emptyState {
+  padding: var(--space-2) var(--space-3);
+  color: var(--palette-slate-400);
+}
+
+.errorState {
+  padding: var(--space-2) var(--space-3);
+  color: var(--red-11);
+  font-size: 12px;
+}
+
+.treeList {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.treeRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  width: 100%;
+  padding: 2px var(--space-2);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--palette-text-main);
+  text-align: left;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+  min-width: 0;
+  user-select: none;
+}
+
+.treeRow:hover {
+  background: rgb(62 198 255 / 0.05);
+}
+
+.treeRowDir {
+  font-weight: 500;
+}
+
+.treeChevronBtn {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--palette-slate-400);
+  cursor: pointer;
+}
+
+.treeChevronSpacer {
+  width: 16px;
+  flex-shrink: 0;
+}
+
+.treeIcon {
+  flex-shrink: 0;
+  color: var(--palette-slate-400);
+}
+
+.treeLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.loadingRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  color: var(--palette-slate-400);
+  font-size: 12px;
+}
+
+.pathHint {
+  padding: 0 var(--space-3) var(--space-1);
+  color: var(--palette-slate-400);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -64,6 +64,7 @@ import {
 } from "../../features/WorkspaceProjects/workspaceProjectsSlice";
 import { openProjectSourcesInFileManager } from "../../services/refact/projectSources";
 import { setInformation } from "../../features/Errors/informationSlice";
+import { ProjectFileTree } from "../ProjectFileTree";
 
 type CraftifDesktopBridge = {
   browseFolder?: () => Promise<string | null>;
@@ -78,7 +79,9 @@ const PANEL_WIDTH_KEY = "chatHistorySidebarWidth";
 const DEFAULT_WIDTH = 260;
 const MAX_VISIBLE_PROJECTS = 5;
 
-export const ChatHistorySidebar: React.FC = () => {
+export const ChatHistorySidebar: React.FC<{
+  progressProjectPath?: string | null;
+}> = ({ progressProjectPath = null }) => {
   const dispatch = useAppDispatch();
   const user = useGetUser();
   const { displayName: craftifDisplayName } = useCraftifAuth();
@@ -580,6 +583,8 @@ export const ChatHistorySidebar: React.FC = () => {
           )}
         </Collapsible.Content>
       </Collapsible.Root>
+
+      <ProjectFileTree progressProjectPath={progressProjectPath} />
 
       <button
         type="button"
