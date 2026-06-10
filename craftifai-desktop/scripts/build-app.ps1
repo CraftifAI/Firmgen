@@ -155,6 +155,37 @@ if (-not (Test-Path "node_modules")) {
     if ($LASTEXITCODE -ne 0) { Write-Err "npm ci failed"; exit 1 }
 }
 
+# ── winCodeSign Symlink Extraction Workaround ──────────────────────────────
+$CacheDir = Join-Path $env:LOCALAPPDATA "electron-builder\Cache\winCodeSign"
+$TargetDir = Join-Path $CacheDir "winCodeSign-2.6.0"
+if (-not (Test-Path $TargetDir)) {
+    Write-Bold "Pre-extracting winCodeSign to avoid symlink errors..."
+    if (Test-Path $CacheDir) {
+        $7zFiles = Get-ChildItem -Path $CacheDir -Filter "*.7z" | Sort-Object LastWriteTime -Descending
+        if ($7zFiles.Count -gt 0) {
+            $Archive = $7zFiles[0].FullName
+            $7za = Join-Path $DesktopDir "node_modules\7zip-bin\win\x64\7za.exe"
+            if (Test-Path $7za) {
+                Write-Info "Extracting $Archive to $TargetDir (excluding macOS and Linux binaries)..."
+                New-Item -ItemType Directory -Path $TargetDir -Force | Out-Null
+                & $7za x $Archive "-o$TargetDir" -y "-x!darwin" "-x!linux"
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Ok "winCodeSign pre-extracted successfully."
+                } else {
+                    Write-Err "Failed to pre-extract winCodeSign."
+                }
+            } else {
+                Write-Err "7za.exe not found at $7za."
+            }
+        } else {
+            Write-Err "No winCodeSign .7z archive found in cache to extract."
+        }
+    } else {
+        Write-Err "winCodeSign cache directory not found: $CacheDir"
+    }
+}
+# ─────────────────────────────────────────────────────────────────────────────
+
 if ($NsisOnly) {
     Write-Info "Packaging as NSIS installer only..."
     npm run build:win-nsis

@@ -225,7 +225,9 @@ export const Chat: React.FC<ChatProps> = ({
         height="100%"
       >
         {/* Left Chat History Panel (replaces ContextPayloadSidebar) */}
-        <ChatHistorySidebar />
+        <ChatHistorySidebar
+          progressProjectPath={progressApi.progress?.esp32_project_path ?? null}
+        />
         {/* ContextPayloadSidebar disabled — kept for future use:
         <React.Suspense fallback={<div>Loading context panel...</div>}>
           <ContextPayloadSidebar />

@@ -20,6 +20,11 @@ use crate::http::routers::v1::esp32_project_sources::{
     handle_v1_esp32_project_sources_upload,
     handle_v1_esp32_project_sources_open,
 };
+use crate::http::routers::v1::esp32_project_tree::{
+    handle_v1_esp32_project_tree_list,
+    handle_v1_esp32_project_tree_open,
+    handle_v1_esp32_chat_project_path,
+};
 use crate::http::routers::v1::progress::handle_v1_progress;
 use crate::http::routers::v1::chat::{handle_v1_chat, handle_v1_chat_completions, handle_v1_chat_payload_debug};
 use crate::http::routers::v1::chat_based_handlers::{handle_v1_commit_message_from_diff, handle_v1_trajectory_compress};
@@ -64,6 +69,7 @@ pub mod esp32_config;
 pub mod esp32_factory_release;
 pub mod esp32_project_workspace;
 pub mod esp32_project_sources;
+pub mod esp32_project_tree;
 pub mod progress;
 pub mod chat;
 pub mod chat_based_handlers;
@@ -115,6 +121,9 @@ pub fn make_v1_router() -> Router {
         .route("/esp32/project-sources", get(handle_v1_esp32_project_sources_list))
         .route("/esp32/project-sources", post(handle_v1_esp32_project_sources_upload))
         .route("/esp32/project-sources/open", post(handle_v1_esp32_project_sources_open))
+        .route("/esp32/project-tree", get(handle_v1_esp32_project_tree_list))
+        .route("/esp32/project-tree/open", post(handle_v1_esp32_project_tree_open))
+        .route("/esp32/chat-project-path", get(handle_v1_esp32_chat_project_path))
         .route("/progress", get(handle_v1_progress))
 
         .route("/tools", get(handle_v1_get_tools))

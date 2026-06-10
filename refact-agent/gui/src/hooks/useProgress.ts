@@ -27,6 +27,7 @@ export interface ProgressSessionDto {
   has_error: boolean;
   is_debugging: boolean;
   debug_iteration: number;
+  esp32_project_path?: string | null;
 }
 
 const NODE_ORDER: WorkflowNode[] = [
