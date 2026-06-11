@@ -35,6 +35,8 @@ export const confirmationSlice = createSlice({
     ) {
       state.pause = true;
       state.pauseReasons = action.payload;
+      state.status.wasInteracted = false;
+      state.status.confirmationStatus = false;
     },
     resetConfirmationInteractedState(state) {
       state.status.wasInteracted = false;

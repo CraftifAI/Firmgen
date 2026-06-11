@@ -15,6 +15,7 @@ import { type Config } from "../../features/Config/configSlice";
 import {
   enableSend,
   selectIsStreaming,
+  selectIsWaiting,
   selectPreventSend,
   selectChatId,
   selectMessages,
@@ -52,11 +53,14 @@ export const Chat: React.FC<ChatProps> = ({
   const dispatch = useAppDispatch();
   const chatId = useAppSelector(selectChatId);
   const messages = useAppSelector(selectMessages);
+  const isStreaming = useAppSelector(selectIsStreaming);
+  const isWaiting = useAppSelector(selectIsWaiting);
   const progressApi = useProgress({
     chatId: chatId ?? undefined,
-    pollingInterval: 500,
+    pollingInterval: 1000,
+    idlePollingInterval: 5000,
+    active: isStreaming || isWaiting,
   });
-  const isStreaming = useAppSelector(selectIsStreaming);
 
   // Progress is driven solely by backend /v1/progress (engine progressbar module)
   const currentStage = progressApi.currentStage;

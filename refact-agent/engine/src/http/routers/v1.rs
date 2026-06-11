@@ -52,6 +52,13 @@ use crate::http::routers::v1::providers::{handle_v1_providers, handle_v1_provide
 use crate::http::routers::v1::vecdb::{handle_v1_vecdb_search, handle_v1_vecdb_status};
 use crate::http::routers::v1::v1_integrations::{handle_v1_integration_get, handle_v1_integration_icon, handle_v1_integration_save, handle_v1_integration_delete, handle_v1_integrations, handle_v1_integrations_filtered, handle_v1_integrations_mcp_logs};
 use crate::http::routers::v1::file_edit_tools::handle_v1_file_edit_tool_dry_run;
+use crate::http::routers::v1::pir_maker::{
+    handle_v1_pir_maker_analyze, handle_v1_pir_maker_apply_patch, handle_v1_pir_maker_approve,
+    handle_v1_pir_maker_codegen_ready, handle_v1_pir_maker_diff, handle_v1_pir_maker_document,
+    handle_v1_pir_maker_graph_view_document, handle_v1_pir_maker_registry,
+    handle_v1_pir_maker_status, handle_v1_pir_maker_structural_patch, handle_v1_pir_maker_unwatch,
+    handle_v1_pir_maker_watch,
+};
 use crate::http::routers::v1::workspace_file::handle_v1_workspace_file_content;
 use crate::http::routers::v1::workspace::{handle_v1_get_app_searchable_id, handle_v1_set_active_group_id};
 use crate::http::routers::v1::workflow::{
@@ -93,6 +100,7 @@ pub mod telemetry_chat;
 pub mod telemetry_network;
 pub mod providers;
 mod file_edit_tools;
+mod pir_maker;
 mod workspace_file;
 mod v1_integrations;
 pub mod vecdb;
@@ -127,6 +135,19 @@ pub fn make_v1_router() -> Router {
         .route("/esp32/project-tree/open", post(handle_v1_esp32_project_tree_open))
         .route("/esp32/chat-project-path", get(handle_v1_esp32_chat_project_path))
         .route("/progress", get(handle_v1_progress))
+
+        .route("/pir-maker/registry", get(handle_v1_pir_maker_registry))
+        .route("/pir-maker/analyze", post(handle_v1_pir_maker_analyze))
+        .route("/pir-maker/codegen-ready", get(handle_v1_pir_maker_codegen_ready))
+        .route("/pir-maker/status", get(handle_v1_pir_maker_status))
+        .route("/pir-maker/document", get(handle_v1_pir_maker_document))
+        .route("/pir-maker/graph-view-document", get(handle_v1_pir_maker_graph_view_document))
+        .route("/pir-maker/apply-node-patch", post(handle_v1_pir_maker_apply_patch))
+        .route("/pir-maker/apply-structural-patch", post(handle_v1_pir_maker_structural_patch))
+        .route("/pir-maker/approve", post(handle_v1_pir_maker_approve))
+        .route("/pir-maker/watch", post(handle_v1_pir_maker_watch))
+        .route("/pir-maker/unwatch", post(handle_v1_pir_maker_unwatch))
+        .route("/pir-maker/diff", get(handle_v1_pir_maker_diff))
 
         .route("/tools", get(handle_v1_get_tools))
         .route("/tools", post(handle_v1_post_tools))

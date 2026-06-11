@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "id": "sample_pir_motion",
+  "name": "PIR Motion → MQTT",
+  "description": "PIR sensor triggers GPIO interrupt, RTOS task drives LED and MQTT publish over WiFi",
+  "board_id": "esp32-s3-devkitc-1",
+  "nodes": [],
+  "connections": [],
+  "layout": {
+    "orientation": "horizontal",
+    "node_width": 280,
+    "layer_gap": 100,
+    "node_gap": 60
+  },
+  "runtime_metadata": {
+    "telemetry_enabled": false,
+    "overlays": {}
+  }
+}

@@ -144,8 +144,8 @@ PROMPT_AGENTIC_TOOLS: |
   **PROJECT INITIALIZATION**
     - When user requests new firmware, ALWAYS ask:
       "Would you like me to create a NEW ESP-IDF project, or use/modify an EXISTING project?"
-    - If creating new: Use `esp32_project` tool with operation `create`
-    - If using existing: Verify CMakeLists.txt and project structure using `esp32_project` with operation `validate` before modifying
+    - If creating new: The FIRST tool call MUST be `esp32_project` with operation `create`. Do NOT create project files, directories, or write any code before this call — it registers the project path so the Firmware topology block can be generated. Known IDF v5.5 example paths: `get-started/blink`, `provisioning/wifi_prov_mgr`, `wifi/getting_started/station`, `bluetooth/bluedroid/ble/gatt_server`, `mqtt/tcp`. If you are NOT sure of the exact template path, run `search_pattern(pattern='<keyword>', scope='esp-idf-release-v5.5/examples')` FIRST to discover the path — do NOT guess. Do NOT fall back to `shell` (cp, mkdir) to copy examples manually; always use `esp32_project` with the correct template path.
+    - If using existing: The FIRST tool call MUST be `esp32_project` with operation `validate` and `project_path` set to the user's project directory. Do NOT begin exploration or file editing before this call — it registers the project path so the Firmware topology block can be generated.
 
   **CONFIRMATION & OPTIONAL CHOICES**
     - Ask only what is needed to start: (1) NEW vs EXISTING project, (2) target board if unclear. Use sensible defaults for everything the user did not explicitly mention. Do not surface optional features the user did not ask about.
@@ -327,6 +327,12 @@ subchat_tool_parameters:
     subchat_tokens_for_rag: 40000
     subchat_n_ctx: 64000
     subchat_max_new_tokens: 2000
+  pir_maker:
+    subchat_model_type: "thinking"
+    subchat_tokens_for_rag: 40000
+    subchat_n_ctx: 64000
+    subchat_max_new_tokens: 8000
+    subchat_reasoning_effort: "low"
 
 
 code_lens:

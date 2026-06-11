@@ -832,7 +832,8 @@ pub async fn file_watcher_event(event: Event, gcx_weak: Weak<ARwLock<GlobalConte
         }
         // info!("EventKind::Create/Modify/Remove {} paths", event.paths.len());
         if let Some(gcx) = gcx_weak.clone().upgrade() {
-            enqueue_some_docs(gcx, &docs, false).await;
+            enqueue_some_docs(gcx.clone(), &docs, false).await;
+            crate::pir_maker::sync::notify_paths_changed(gcx_weak, &docs).await;
         }
     }
 

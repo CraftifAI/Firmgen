@@ -65,6 +65,8 @@ mod privacy;
 mod git;
 mod cloud;
 mod agentic;
+mod firmware_topology;
+mod pir_maker;
 mod memories;
 mod workflow;
 mod progressbar;

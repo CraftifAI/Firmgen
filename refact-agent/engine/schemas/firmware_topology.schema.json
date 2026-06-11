@@ -1,0 +1,232 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://refact.ai/schemas/esp32/firmware_topology.json",
+  "title": "ESP32 Firmware Execution Topology Graph",
+  "description": "Structured execution/runtime graph for ESP32 firmware modules, RTOS tasks, peripherals, and data flow. Used for visualization, validation, and future code generation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "nodes", "connections"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schema_version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Bump when the graph document shape changes."
+    },
+    "id": {
+      "type": "string",
+      "maxLength": 128,
+      "description": "Optional graph identifier (project-scoped slug)."
+    },
+    "name": {
+      "type": "string",
+      "maxLength": 256,
+      "description": "Human-readable graph title."
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 2048
+    },
+    "board_id": {
+      "type": "string",
+      "maxLength": 64,
+      "description": "Optional board preset id this graph targets."
+    },
+    "nodes": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/node" }
+    },
+    "connections": {
+      "type": "array",
+      "description": "Directed edges as [source_port_id, target_port_id] pairs.",
+      "items": {
+        "type": "array",
+        "minItems": 2,
+        "maxItems": 2,
+        "items": { "type": "string", "minLength": 1 }
+      }
+    },
+    "layout": { "$ref": "#/$defs/layout_config" },
+    "runtime_metadata": { "$ref": "#/$defs/runtime_metadata" }
+  },
+  "$defs": {
+    "port_direction": {
+      "type": "string",
+      "enum": ["input", "output"]
+    },
+    "signal_metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "dtype": { "type": "string", "maxLength": 64 },
+        "shape": {
+          "type": "array",
+          "items": { "type": "integer" }
+        },
+        "unit": { "type": "string", "maxLength": 32 },
+        "rate_hz": { "type": "number", "minimum": 0 },
+        "encoding": { "type": "string", "maxLength": 32 }
+      }
+    },
+    "hardware_metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "gpio": { "type": "integer", "minimum": 0, "maximum": 48 },
+        "bus": { "type": "string", "enum": ["gpio", "i2c", "spi", "uart", "wifi", "ble", "dma", "adc", "pwm", "camera", "display", "storage", "internal"] },
+        "peripheral": { "type": "string", "maxLength": 64 },
+        "pin_label": { "type": "string", "maxLength": 32 },
+        "i2c_address": { "type": "string", "maxLength": 8 },
+        "spi_host": { "type": "string", "maxLength": 16 },
+        "uart_port": { "type": "integer", "minimum": 0, "maximum": 2 }
+      }
+    },
+    "port": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "direction", "name"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 64 },
+        "direction": { "$ref": "#/$defs/port_direction" },
+        "datatype": { "type": "string", "maxLength": 64 },
+        "signal": { "$ref": "#/$defs/signal_metadata" },
+        "hardware": { "$ref": "#/$defs/hardware_metadata" },
+        "required": { "type": "boolean", "default": false },
+        "multiplicity": {
+          "type": "string",
+          "enum": ["one", "many"],
+          "default": "one"
+        }
+      }
+    },
+    "execution_metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "phase": {
+          "type": "string",
+          "enum": ["boot", "init", "runtime", "isr", "idle", "shutdown"]
+        },
+        "priority": { "type": "integer", "minimum": 0, "maximum": 25 },
+        "stack_size": { "type": "integer", "minimum": 512 },
+        "core_affinity": { "type": "integer", "minimum": 0, "maximum": 1 },
+        "period_ms": { "type": "number", "minimum": 0 },
+        "trigger": {
+          "type": "string",
+          "enum": ["poll", "interrupt", "timer", "event", "dma", "stream"]
+        }
+      }
+    },
+    "visual_metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "layer": { "type": "integer", "minimum": 0 },
+        "collapsed": { "type": "boolean" }
+      }
+    },
+    "property_field": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "label", "type"],
+      "properties": {
+        "key": { "type": "string", "maxLength": 128 },
+        "label": { "type": "string", "maxLength": 128 },
+        "type": {
+          "type": "string",
+          "enum": ["string", "number", "integer", "boolean", "enum", "url", "path", "json", "gpio"]
+        },
+        "default": {},
+        "options": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "min": { "type": "number" },
+        "max": { "type": "number" },
+        "read_only": { "type": "boolean" },
+        "description": { "type": "string", "maxLength": 512 }
+      }
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "node_type", "ports"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "node_type": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "label": { "type": "string", "maxLength": 128 },
+        "description": { "type": "string", "maxLength": 1024 },
+        "ports": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/port" }
+        },
+        "properties": {
+          "type": "object",
+          "description": "Node-type-specific editable configuration."
+        },
+        "hardware": { "$ref": "#/$defs/hardware_metadata" },
+        "execution": { "$ref": "#/$defs/execution_metadata" },
+        "visual": { "$ref": "#/$defs/visual_metadata" },
+        "validation_state": {
+          "type": "string",
+          "enum": ["valid", "warning", "error", "unknown"]
+        },
+        "runtime_state": {
+          "type": "string",
+          "enum": ["idle", "running", "blocked", "error", "unknown"]
+        }
+      }
+    },
+    "layout_config": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "orientation": {
+          "type": "string",
+          "enum": ["horizontal", "vertical"],
+          "default": "horizontal"
+        },
+        "node_width": { "type": "number", "minimum": 120, "default": 280 },
+        "layer_gap": { "type": "number", "minimum": 20, "default": 100 },
+        "node_gap": { "type": "number", "minimum": 10, "default": 60 }
+      }
+    },
+    "runtime_metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Extensible runtime overlay slot for future telemetry (CPU, GPIO, heap, FPS, etc.).",
+      "properties": {
+        "telemetry_enabled": { "type": "boolean", "default": false },
+        "last_updated_ms": { "type": "integer", "minimum": 0 },
+        "overlays": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "description": "Per-node or per-metric overlay payload."
+          }
+        }
+      }
+    },
+    "validation_issue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message", "severity"],
+      "properties": {
+        "code": { "type": "string", "maxLength": 64 },
+        "message": { "type": "string", "maxLength": 512 },
+        "severity": { "type": "string", "enum": ["error", "warning", "info"] },
+        "node_id": { "type": "string" },
+        "port_id": { "type": "string" },
+        "connection": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 2,
+          "maxItems": 2
+        }
+      }
+    }
+  }
+}

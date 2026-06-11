@@ -1,0 +1,72 @@
+.root {
+  border: 1px solid rgb(255 255 255 / 0.06);
+  border-radius: 8px;
+  background: rgb(0 0 0 / 0.15);
+  overflow: hidden;
+}
+
+.trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.trigger:hover {
+  background: rgb(255 255 255 / 0.03);
+}
+
+.chevron {
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+}
+
+.chevronOpen {
+  transform: rotate(180deg);
+}
+
+.content {
+  padding: 0 10px 10px;
+}
+
+.fileList {
+  max-height: 160px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fileList li {
+  padding: 4px 0;
+  border-bottom: 1px solid rgb(255 255 255 / 0.04);
+}
+
+.fileList li:last-child {
+  border-bottom: none;
+}
+
+.filePrimary {
+  background: rgb(0 180 80 / 0.06);
+  margin: 0 -6px;
+  padding: 4px 6px !important;
+  border-radius: 4px;
+}
+
+.filePath {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  word-break: break-all;
+}
+
+.badge {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 10px;
+}

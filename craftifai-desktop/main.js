@@ -518,6 +518,17 @@ function spawnLSP(settings) {
     ...(indexingYamlPath ? ['--indexing-yaml', indexingYamlPath] : []),
   ];
 
+  const pirAgentMode = (settings.pir_agent_mode || process.env.PIR_AGENT_MODE || '').trim();
+  const pirAiRefine = String(
+    settings.pir_ai_refine !== undefined
+      ? settings.pir_ai_refine
+      : (process.env.PIR_AI_REFINE || '')
+  ).trim();
+  const lspEnv = { ...process.env, OPENAI_API_KEY: settings.openai_api_key };
+  if (pirAgentMode) lspEnv.PIR_AGENT_MODE = pirAgentMode;
+  if (pirAiRefine) lspEnv.PIR_AI_REFINE = pirAiRefine;
+  log('LSP', `PIR mode env: ${lspEnv.PIR_AGENT_MODE || '(default)'}, refine: ${lspEnv.PIR_AI_REFINE || '(default)'}`);
+
   let proc;
 
   if (IS_WIN) {
@@ -551,7 +562,7 @@ function spawnLSP(settings) {
     proc = spawn('powershell.exe', [
       '-ExecutionPolicy', 'Bypass', '-NoProfile', '-File', wrapperPath,
     ], {
-      env: { ...process.env, OPENAI_API_KEY: settings.openai_api_key },
+      env: lspEnv,
     });
   } else {
     // On Linux/macOS, generate a bash wrapper that sources export.sh
@@ -572,9 +583,7 @@ function spawnLSP(settings) {
     log('LSP', `Wrapper written to: ${wrapperPath}`);
     log('LSP', `board=${board}  project_dir=${workspaceFolder}`);
 
-    proc = spawn('bash', [wrapperPath], {
-      env: { ...process.env, OPENAI_API_KEY: settings.openai_api_key },
-    });
+    proc = spawn('bash', [wrapperPath], { env: lspEnv });
   }
 
   const lspLog = fs.createWriteStream(path.join(LOG_DIR, 'lsp.log'), { flags: 'a' });
