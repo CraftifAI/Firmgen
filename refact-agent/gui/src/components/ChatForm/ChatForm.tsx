@@ -494,7 +494,7 @@ export const ChatForm: React.FC<ChatFormProps> = ({
           </Flex>
           <Flex className={styles.composerToolbar} gap="1" wrap="wrap" py="1" px="2">
             {/* {isModelSelectVisible && <CapsSelect />} */}
-            <CapsSelect disabled={messages.length >= 1}/>
+            {/* <CapsSelect disabled={messages.length >= 1}/> */}
 
             <Flex className={styles.composerActions} justify="end" flexGrow="1" wrap="wrap" gap="2">
               <input

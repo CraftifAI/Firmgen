@@ -200,6 +200,14 @@ if (-not $SkipRust) {
     Copy-Item (Join-Path $EngineDir "target\release\refact-lsp.exe") (Join-Path $BinDir "refact-lsp.exe") -Force
     $size = (Get-Item (Join-Path $BinDir "refact-lsp.exe")).Length / 1MB
     Write-Ok ("refact-lsp.exe -> $BinDir ({0:N1} MB)" -f $size)
+    $pdbSrc = Join-Path $EngineDir "target\release\refact_lsp.pdb"
+    if (Test-Path $pdbSrc) {
+        Copy-Item $pdbSrc (Join-Path $BinDir "refact_lsp.pdb") -Force
+        $pdbSize = (Get-Item (Join-Path $BinDir "refact_lsp.pdb")).Length / 1MB
+        Write-Ok ("refact_lsp.pdb -> $BinDir ({0:N1} MB)" -f $pdbSize)
+    } else {
+        Write-Warn "refact_lsp.pdb not found at $pdbSrc (skipping)"
+    }
 } else {
     Write-Bold "Phase 1/4 - Skipping Rust build (-SkipRust)"
     $lspPath = Join-Path $BinDir "refact-lsp.exe"

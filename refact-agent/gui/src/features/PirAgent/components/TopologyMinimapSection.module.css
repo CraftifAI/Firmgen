@@ -1,0 +1,250 @@
+/* ─────────────────────────────────────────────────────
+   Topology Panel Section  —  left sidebar
+───────────────────────────────────────────────────── */
+
+.root {
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--sidebar-border);
+}
+
+/* ── Section header / trigger ──────────────────────── */
+
+.trigger {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 8px var(--space-3);
+  background: color-mix(in srgb, var(--palette-sidebar) 94%, #060e1a);
+  border: none;
+  cursor: pointer;
+  color: var(--palette-text-main);
+  text-align: left;
+  transition: background 0.15s ease;
+}
+
+.trigger:hover {
+  background: color-mix(in srgb, var(--palette-sidebar) 88%, #071526);
+}
+
+.triggerOpen {
+  border-bottom: 1px solid color-mix(in srgb, var(--sidebar-border) 55%, transparent);
+}
+
+/* icon badge */
+.iconWrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  background: rgb(16 185 129 / 0.12);
+  color: rgb(52 211 153 / 0.9);
+  flex-shrink: 0;
+}
+
+/* "TOPOLOGY" label */
+.label {
+  flex: 1;
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--palette-slate-400);
+  min-width: 0;
+}
+
+/* node count pill */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 5px;
+  height: 15px;
+  background: rgb(52 211 153 / 0.10);
+  border: 1px solid rgb(52 211 153 / 0.22);
+  border-radius: 4px;
+  font-size: 0.58rem;
+  font-weight: 700;
+  color: rgb(52 211 153 / 0.8);
+  letter-spacing: 0.03em;
+  flex-shrink: 0;
+}
+
+/* loading / inline spinner */
+.spinner {
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid rgb(255 255 255 / 0.1);
+  border-top-color: rgb(52 211 153 / 0.7);
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* chevron */
+.chevron {
+  color: var(--palette-slate-500);
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.chevronOpen {
+  transform: rotate(180deg);
+}
+
+/* ── Expandable body ────────────────────────────────── */
+
+.content {
+  padding: 6px 8px 10px;
+}
+
+/* one-liner headline below the trigger */
+.headline {
+  margin: 0 0 6px;
+  font-size: 0.7rem;
+  color: var(--palette-slate-500);
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* dim "waiting…" line */
+.subtext {
+  margin: 0 0 6px;
+  font-size: 0.68rem;
+  color: var(--palette-slate-600);
+  font-style: italic;
+}
+
+/* ── Graph canvas preview ───────────────────────────── */
+
+.canvas {
+  position: relative;
+  height: 160px;
+  border-radius: 7px;
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 0.07);
+  cursor: pointer;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.canvas:hover {
+  border-color: rgb(52 211 153 / 0.35);
+  box-shadow:
+    0 0 0 1px rgb(52 211 153 / 0.1),
+    0 4px 16px rgb(0 0 0 / 0.35);
+}
+
+.canvas:focus-visible {
+  outline: none;
+  border-color: rgb(52 211 153 / 0.5);
+  box-shadow: 0 0 0 2px rgb(52 211 153 / 0.18);
+}
+
+/* graph layer — pointer-events off so clicks pass to wrapper */
+.canvasInner {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(155deg, rgb(10 16 22 / 1), rgb(5 9 13 / 1));
+}
+
+/* subtle dot-grid */
+.canvasInner::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(
+    circle,
+    rgb(255 255 255 / 0.04) 1px,
+    transparent 1px
+  );
+  background-size: 14px 14px;
+  pointer-events: none;
+}
+
+/* "Open editor ↗" hover label */
+.hoverOverlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  padding: 7px 8px;
+  opacity: 0;
+  pointer-events: none;
+  background: linear-gradient(to top, rgb(0 0 0 / 0.55) 0%, transparent 55%);
+  transition: opacity 0.18s ease;
+}
+
+.canvas:hover .hoverOverlay {
+  opacity: 1;
+}
+
+.hoverLabel {
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgb(52 211 153 / 0.9);
+}
+
+/* ── Analyzing state ────────────────────────────────── */
+
+.analyzing {
+  height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px dashed rgb(52 211 153 / 0.15);
+  border-radius: 7px;
+  background: rgb(16 185 129 / 0.04);
+}
+
+.analyzingText {
+  font-size: 0.72rem;
+  color: var(--palette-slate-500);
+}
+
+/* ── Empty state ────────────────────────────────────── */
+
+.empty {
+  height: 72px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: 1px dashed rgb(255 255 255 / 0.07);
+  border-radius: 7px;
+  background: rgb(0 0 0 / 0.12);
+}
+
+.emptyIcon {
+  color: var(--palette-slate-600);
+}
+
+.emptyText {
+  font-size: 0.68rem;
+  color: var(--palette-slate-600);
+  letter-spacing: 0.02em;
+}
+
+/* ── Footer action buttons ──────────────────────────── */
+
+.actionBtn {
+  font-size: 0.68rem !important;
+  color: var(--palette-slate-400) !important;
+  padding: 2px 6px !important;
+}
+
+.actionBtn:hover {
+  color: rgb(52 211 153 / 0.9) !important;
+}

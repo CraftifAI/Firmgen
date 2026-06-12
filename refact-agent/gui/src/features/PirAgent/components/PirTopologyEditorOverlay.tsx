@@ -7,6 +7,8 @@ import {
 import type { FirmwareGraph } from "../types";
 import { Box, Dialog, Flex, IconButton, Text } from "@radix-ui/themes";
 import { Cross2Icon } from "@radix-ui/react-icons";
+import { Zap, ZapOff } from "lucide-react";
+import classNames from "classnames";
 import { ReactFlowProvider } from "reactflow";
 
 import type { PipelineStage } from "../../../hooks/useWorkflowStatus";
@@ -44,6 +46,21 @@ export const PirTopologyEditorOverlay: React.FC<PirTopologyEditorOverlayProps> =
   const inspectorReadOnly = isInspectorReadOnlyDiagramView(diagramView);
   const [diagramPositions, setDiagramPositions] = useState<DiagramLayoutPositions>({});
   const { setSelectedNodeId } = pir;
+
+  const [autoSave, setAutoSave] = useState(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("pirNodeAutoSave") !== "false";
+    }
+    return true;
+  });
+
+  const toggleAutoSave = useCallback(() => {
+    setAutoSave((v) => {
+      const next = !v;
+      localStorage.setItem("pirNodeAutoSave", String(next));
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     if (!open) {
@@ -162,15 +179,36 @@ export const PirTopologyEditorOverlay: React.FC<PirTopologyEditorOverlayProps> =
               }
               validation={pir.validation}
               loading={pir.loading || pir.pirStatus?.status === "analyzing"}
-              onApprove={() => void pir.approveTopology()}
               onRefresh={() => void pir.runAnalyze(false, "user_refresh")}
             />
           </Box>
-          <Dialog.Close>
-            <IconButton variant="ghost" color="gray" aria-label="Close topology editor">
-              <Cross2Icon />
-            </IconButton>
-          </Dialog.Close>
+          <Flex align="center" gap="2" style={{ flexShrink: 0 }}>
+            <button
+              type="button"
+              className={classNames(styles.autoSaveToggle, {
+                [styles.autoSaveToggleActive]: autoSave,
+              })}
+              onClick={toggleAutoSave}
+              title={
+                autoSave
+                  ? "Auto-save on — click to disable"
+                  : "Auto-save off — click to save manually"
+              }
+              aria-pressed={autoSave}
+            >
+              {autoSave ? (
+                <Zap size={12} strokeWidth={2.5} />
+              ) : (
+                <ZapOff size={12} strokeWidth={2.5} />
+              )}
+              <span>Auto-save</span>
+            </button>
+            <Dialog.Close>
+              <IconButton variant="ghost" color="gray" aria-label="Close topology editor">
+                <Cross2Icon />
+              </IconButton>
+            </Dialog.Close>
+          </Flex>
         </Flex>
 
         {pir.error ? (
@@ -250,7 +288,7 @@ export const PirTopologyEditorOverlay: React.FC<PirTopologyEditorOverlayProps> =
                   issues={pir.validation?.issues ?? []}
                   onApply={(id, updated) => void pir.applyNodeEdits(id, updated)}
                   onClose={() => pir.setSelectedNodeId(null)}
-                  syncToProject
+                  syncToProject={autoSave}
                 />
               )}
             </TopologyErrorBoundary>

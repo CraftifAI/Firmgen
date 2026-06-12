@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from "react";
-import { Box, Container, Flex, Text } from "@radix-ui/themes";
+import { Box, Button, Container, Flex, Text } from "@radix-ui/themes";
 import * as Collapsible from "@radix-ui/react-collapsible";
 import { ChevronDownIcon } from "@radix-ui/react-icons";
 import { Network } from "lucide-react";
@@ -9,10 +9,8 @@ import classNames from "classnames";
 import type { PipelineStage } from "../../../hooks/useWorkflowStatus";
 import { usePirMaker } from "../hooks/usePirMaker";
 import { GraphCanvas } from "./GraphCanvas";
-import { PirAnalyzedFilesList } from "./PirAnalyzedFilesList";
 import { ignoreNodeSelection } from "../utils/noop";
 import { PirTopologyEditorOverlay } from "./PirTopologyEditorOverlay";
-import { TopologyApprovalCard } from "./TopologyApprovalCard";
 import styles from "./PirTopologyChatBlock.module.css";
 
 export type PirTopologyChatBlockProps = {
@@ -80,12 +78,10 @@ export const PirTopologyChatBlock: React.FC<PirTopologyChatBlockProps> = React.m
   const approval =
     pir.pir?.approval.status ?? pir.pirStatus?.approval_status ?? "pending";
 
-  const needsApprovalHint =
-    hasGraph &&
-    !isAnalyzing &&
-    (approval === "pending" || approval === "stale");
-
-  const analyzedFiles = pir.pir?.provenance.analyzed_files ?? [];
+  const validationErrors =
+    pir.validation?.issues.filter((i) => i.severity === "error").length ?? 0;
+  const validationWarnings =
+    pir.validation?.issues.filter((i) => i.severity === "warning").length ?? 0;
 
   const openEditor = useCallback(() => {
     if (hasGraph) setOverlayOpen(true);
@@ -144,44 +140,33 @@ export const PirTopologyChatBlock: React.FC<PirTopologyChatBlockProps> = React.m
               </Flex>
             ) : null}
 
-            {needsApprovalHint ? (
-              <Text size="1" color="amber" mb="2">
-                Approve topology before confirming build with the agent.
-              </Text>
-            ) : null}
-
             {hasGraph && graph ? (
-              <>
-                <Box
-                  className={styles.previewPane}
-                  onDoubleClick={openEditor}
-                  role="button"
-                  tabIndex={0}
-                  aria-label="Topology preview. Double-click to open editor."
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      openEditor();
-                    }
-                  }}
-                >
-                  <ReactFlowProvider>
-                    <GraphCanvas
-                      graph={graph}
-                      registry={pir.registry}
-                      validationIssues={pir.validation?.issues ?? []}
-                      selectedNodeId={null}
-                      onSelectNode={ignoreNodeSelection}
-                      diffNodeIds={pir.diffNodeIds}
-                      nodeConfidence={nodeConfidence}
-                      viewMode="preview"
-                    />
-                  </ReactFlowProvider>
-                </Box>
-                <button type="button" className={styles.openLink} onClick={openEditor}>
-                  Click to view and edit graph
-                </button>
-              </>
+              <Box
+                className={styles.previewPane}
+                onClick={openEditor}
+                role="button"
+                tabIndex={0}
+                aria-label="Topology preview. Click to open editor."
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    openEditor();
+                  }
+                }}
+              >
+                <ReactFlowProvider>
+                  <GraphCanvas
+                    graph={graph}
+                    registry={pir.registry}
+                    validationIssues={pir.validation?.issues ?? []}
+                    selectedNodeId={null}
+                    onSelectNode={ignoreNodeSelection}
+                    diffNodeIds={pir.diffNodeIds}
+                    nodeConfidence={nodeConfidence}
+                    viewMode="preview"
+                  />
+                </ReactFlowProvider>
+              </Box>
             ) : null}
 
             {!hasGraph && !isAnalyzing && !pir.error ? (
@@ -195,24 +180,30 @@ export const PirTopologyChatBlock: React.FC<PirTopologyChatBlockProps> = React.m
               </Flex>
             ) : null}
 
-            {analyzedFiles.length > 0 ? (
-              <Box mt="2">
-                <PirAnalyzedFilesList files={analyzedFiles} compact />
-              </Box>
-            ) : null}
-
             {hasGraph ? (
-              <Box mt="2">
-                <TopologyApprovalCard
-                  pirStatus={pir.pirStatus}
-                  result={pir.result}
-                  validation={pir.validation}
-                  loading={isAnalyzing}
-                  onApprove={() => void pir.approveTopology()}
-                  onRefresh={() => void pir.runAnalyze(true, "user_refresh")}
-                  onOpenDiagram={openEditor}
-                />
-              </Box>
+              <Flex mt="2" gap="2" align="center" wrap="wrap">
+                {validationErrors > 0 ? (
+                  <Text size="1" color="red">
+                    {validationErrors} error{validationErrors === 1 ? "" : "s"}
+                  </Text>
+                ) : null}
+                {validationWarnings > 0 ? (
+                  <Text size="1" color="amber">
+                    {validationWarnings} warning{validationWarnings === 1 ? "" : "s"}
+                  </Text>
+                ) : null}
+                <Button
+                  size="1"
+                  variant="ghost"
+                  onClick={() => void pir.runAnalyze(true, "user_refresh")}
+                  disabled={isAnalyzing}
+                >
+                  Refresh
+                </Button>
+                <Button size="1" variant="ghost" onClick={openEditor}>
+                  Open editor
+                </Button>
+              </Flex>
             ) : null}
           </Collapsible.Content>
         </Collapsible.Root>

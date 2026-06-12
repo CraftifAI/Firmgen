@@ -65,6 +65,8 @@ import {
 import { openProjectSourcesInFileManager } from "../../services/refact/projectSources";
 import { setInformation } from "../../features/Errors/informationSlice";
 import { ProjectFileTree } from "../ProjectFileTree";
+import { TopologyMinimapSection } from "../../features/PirAgent/components/TopologyMinimapSection";
+import type { PipelineStage } from "../../hooks/useWorkflowStatus";
 
 type CraftifDesktopBridge = {
   browseFolder?: () => Promise<string | null>;
@@ -81,7 +83,8 @@ const MAX_VISIBLE_PROJECTS = 5;
 
 export const ChatHistorySidebar: React.FC<{
   progressProjectPath?: string | null;
-}> = ({ progressProjectPath = null }) => {
+  currentStage?: PipelineStage;
+}> = ({ progressProjectPath = null, currentStage = "PLANNING" }) => {
   const dispatch = useAppDispatch();
   const user = useGetUser();
   const { displayName: craftifDisplayName } = useCraftifAuth();
@@ -585,6 +588,11 @@ export const ChatHistorySidebar: React.FC<{
       </Collapsible.Root>
 
       <ProjectFileTree progressProjectPath={progressProjectPath} />
+
+      <TopologyMinimapSection
+        projectPath={progressProjectPath}
+        currentStage={currentStage}
+      />
 
       <button
         type="button"

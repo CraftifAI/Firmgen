@@ -9,7 +9,7 @@
   overflow: hidden;
   box-shadow: 0 8px 24px rgb(0 0 0 / 0.18);
   contain: layout;
-  min-height: 120px;
+  min-height: 40px;
 }
 
 .trigger {
@@ -17,8 +17,8 @@
   display: grid;
   grid-template-columns: auto 1fr auto auto;
   align-items: center;
-  gap: 10px;
-  padding: 12px 14px;
+  gap: 8px;
+  padding: 8px 12px;
   border: none;
   background: transparent;
   color: inherit;
@@ -82,12 +82,12 @@
 }
 
 .content {
-  padding: 10px 12px 12px;
+  padding: 8px 10px 10px;
 }
 
 .previewPane {
   position: relative;
-  height: 168px;
+  height: 140px;
   border: 1px solid var(--gray-6);
   border-radius: 8px;
   overflow: hidden;
@@ -100,29 +100,6 @@
   outline-offset: 2px;
 }
 
-.openLink {
-  display: block;
-  width: 100%;
-  margin-top: 10px;
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--accent-11);
-  font-size: 13px;
-  font-weight: 500;
-  text-align: center;
-  cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-
-.openLink:hover {
-  color: var(--accent-12);
-}
-
-.actions {
-  margin-top: 10px;
-}
 
 .analyzingBox {
   min-height: 88px;
@@ -185,4 +162,40 @@
   flex-shrink: 0;
   border-left: 1px solid var(--gray-6);
   overflow-y: auto;
+}
+
+/* ── Auto-save toggle (overlay header) ─────────────── */
+
+.autoSaveToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  color: var(--gray-9);
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+
+.autoSaveToggle:hover {
+  background: var(--gray-3);
+  color: var(--gray-12);
+}
+
+.autoSaveToggleActive {
+  color: rgb(52 211 153 / 0.85);
+  border-color: rgb(52 211 153 / 0.2);
+  background: rgb(52 211 153 / 0.06);
+}
+
+.autoSaveToggleActive:hover {
+  background: rgb(52 211 153 / 0.1);
+  color: rgb(52 211 153);
+  border-color: rgb(52 211 153 / 0.3);
 }

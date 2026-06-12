@@ -156,21 +156,21 @@ pub fn validate_graph(graph: &FirmwareGraph) -> ValidationReport {
             ));
         }
 
-        let src_dtype = src_port.datatype.as_deref().unwrap_or("any");
-        let dst_dtype = dst_port.datatype.as_deref().unwrap_or("any");
-        if !are_datatypes_compatible(src_dtype, dst_dtype) {
-            issues.push(issue(
-                "datatype_mismatch",
-                format!(
-                    "Incompatible datatypes: {} ({}) -> {} ({})",
-                    src_id, src_dtype, dst_id, dst_dtype
-                ),
-                "error",
-                Some(dst_node_id.clone()),
-                Some(dst_id.clone()),
-                Some(conn.clone()),
-            ));
-        }
+        // let src_dtype = src_port.datatype.as_deref().unwrap_or("any");
+        // let dst_dtype = dst_port.datatype.as_deref().unwrap_or("any");
+        // if !are_datatypes_compatible(src_dtype, dst_dtype) {
+        //     issues.push(issue(
+        //         "datatype_mismatch",
+        //         format!(
+        //             "Incompatible datatypes: {} ({}) -> {} ({})",
+        //             src_id, src_dtype, dst_id, dst_dtype
+        //         ),
+        //         "error",
+        //         Some(dst_node_id.clone()),
+        //         Some(dst_id.clone()),
+        //         Some(conn.clone()),
+        //     ));
+        // }
     }
 
     if let Some(cycle_nodes) = detect_execution_cycles(graph) {
