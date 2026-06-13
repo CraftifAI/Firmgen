@@ -81,7 +81,7 @@ export async function pirAnalyze(
       chat_context: chatContext?.trim() ? chatContext.trim() : undefined,
     }),
   });
-  const body = (await r.json()) as PirAnalyzeResult | { status: string };
+  const body = (await r.json()) as PirAnalyzeResult | { status: string; detail?: string };
   if ("pir" in body) {
     return body;
   }
@@ -90,8 +90,18 @@ export async function pirAnalyze(
     const { result } = await pirDocument(port, chatId);
     return result;
   }
+  if (body.status === "ready") {
+    // Backend already has a fresh result — fetch it directly.
+    const { result } = await pirDocument(port, chatId);
+    return result;
+  }
   if (!r.ok) {
-    throw new Error(`HTTP ${r.status}`);
+    const detail = (body as { detail?: string }).detail;
+    throw new Error(detail ?? `HTTP ${r.status}`);
+  }
+  if (body.status === "error") {
+    const detail = (body as { detail?: string }).detail;
+    throw new Error(detail ?? "PIR analyze failed");
   }
   return body as PirAnalyzeResult;
 }

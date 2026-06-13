@@ -237,6 +237,38 @@
   letter-spacing: 0.02em;
 }
 
+/* ── Auto-update toggle (trigger row) ───────────────── */
+
+.autoToggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--palette-slate-600);
+  padding: 0;
+  flex-shrink: 0;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.autoToggle:hover {
+  background: rgb(255 255 255 / 0.06);
+  color: var(--palette-slate-400);
+}
+
+.autoToggleActive {
+  color: rgb(52 211 153 / 0.8);
+}
+
+.autoToggleActive:hover {
+  color: rgb(52 211 153);
+  background: rgb(52 211 153 / 0.08);
+}
+
 /* ── Footer action buttons ──────────────────────────── */
 
 .actionBtn {

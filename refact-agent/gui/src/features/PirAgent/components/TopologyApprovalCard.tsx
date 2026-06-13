@@ -26,6 +26,10 @@ export const TopologyApprovalCard: React.FC<TopologyApprovalCardProps> = ({
   onOpenDiagram,
   onRefresh,
 }) => {
+  const errors =
+    validation?.issues.filter((i) => i.severity === "error").length ?? 0;
+  const warnings =
+    validation?.issues.filter((i) => i.severity === "warning").length ?? 0;
   const approval =
     result?.pir.approval.status ?? pirStatus?.approval_status ?? "pending";
   const headline =
@@ -76,6 +80,20 @@ export const TopologyApprovalCard: React.FC<TopologyApprovalCardProps> = ({
           </Flex>
         </Flex>
 
+        {(errors > 0 || warnings > 0) && (
+          <Flex gap="2" wrap="wrap">
+            {errors > 0 ? (
+              <Text size="1" color="red">
+                {errors} error(s)
+              </Text>
+            ) : null}
+            {warnings > 0 ? (
+              <Text size="1" color="amber">
+                {warnings} warning(s)
+              </Text>
+            ) : null}
+          </Flex>
+        )}
 
         {result?.diff &&
         (result.diff.nodes_added.length > 0 ||

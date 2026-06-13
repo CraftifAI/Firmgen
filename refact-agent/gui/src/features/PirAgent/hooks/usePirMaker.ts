@@ -180,6 +180,8 @@ export function usePirMaker({
         isPatchResponse || opts?.preservePositions === true;
 
       let nextGraph = doc.graph;
+      // Guard: backend may return null graph during early analysis or error recovery.
+      if (!nextGraph) return false;
       if (shouldPreserveLayout && resultRef.current?.graph) {
         nextGraph = mergeGraphVisualPositions(
           doc.graph,
@@ -432,7 +434,9 @@ export function usePirMaker({
     if (lastAnalyzedTurnRef.current === agentTurnId) return;
     if (pirTurnAnalyzeDedupe.get(chatId) === agentTurnId) {
       lastAnalyzedTurnRef.current = agentTurnId;
-      return;
+      // Dedupe: already ran for this turn. Skip unless hydrate found no data
+      // (e.g. backend restarted and lost its cache — need a fresh analyze).
+      if (resultRef.current !== null) return;
     }
 
     lastAnalyzedTurnRef.current = agentTurnId;
@@ -464,11 +468,9 @@ export function usePirMaker({
           s.graph_version != null && s.graph_version !== graphVersionRef.current;
         const snapshotChanged = revisionChanged || graphVersionChanged;
 
-        if (
-          s.status === "ready" &&
-          (prev === "analyzing" || prev === undefined) &&
-          snapshotChanged
-        ) {
+        if (s.status === "ready" && snapshotChanged) {
+          // Fetch new graph whenever the revision advanced, even if we never
+          // saw an "analyzing" tick (analyze completed between poll intervals).
           void refreshDocument("poll_revision_change");
         } else if (
           s.status === "ready" &&

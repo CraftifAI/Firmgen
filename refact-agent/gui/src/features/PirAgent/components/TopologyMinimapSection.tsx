@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useMemo } from "react";
 import { Button, Flex, Text } from "@radix-ui/themes";
 import { ChevronDownIcon } from "@radix-ui/react-icons";
-import { Network } from "lucide-react";
+import { Network, Zap, ZapOff } from "lucide-react";
 import { ReactFlowProvider } from "reactflow";
 import classNames from "classnames";
 
@@ -12,10 +12,10 @@ import {
   selectIsStreaming,
   selectIsWaiting,
   selectMessages,
+  selectThread,
 } from "../../Chat/Thread/selectors";
-import { usePirCodegenReady } from "../hooks/usePirCodegenReady";
-import { usePirChatAnchor } from "../hooks/usePirChatAnchor";
 import { usePirMaker } from "../hooks/usePirMaker";
+import type { RootState } from "../../../app/store";
 import { GraphCanvas } from "./GraphCanvas";
 import { ignoreNodeSelection } from "../utils/noop";
 import { PirTopologyEditorOverlay } from "./PirTopologyEditorOverlay";
@@ -23,21 +23,73 @@ import type { PipelineStage } from "../../../hooks/useWorkflowStatus";
 import styles from "./TopologyMinimapSection.module.css";
 
 export type TopologyMinimapSectionProps = {
+  /** Path from backend progress events — used as a fallback when the thread has none. */
   projectPath: string | null;
   currentStage: PipelineStage;
 };
 
 export const TopologyMinimapSection: React.FC<TopologyMinimapSectionProps> = ({
-  projectPath,
+  projectPath: progressProjectPath,
   currentStage,
 }) => {
   const [open, setOpen] = useState(false);
   const [overlayOpen, setOverlayOpen] = useState(false);
+  const [autoUpdate, setAutoUpdate] = useState(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("pirAutoUpdate") !== "false";
+    }
+    return true;
+  });
+
+  const toggleAutoUpdate = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    setAutoUpdate((v) => {
+      const next = !v;
+      localStorage.setItem("pirAutoUpdate", String(next));
+      return next;
+    });
+  }, []);
 
   const chatId = useAppSelector(selectChatId);
+  const thread = useAppSelector(selectThread);
   const messages = useAppSelector(selectMessages);
   const isStreaming = useAppSelector(selectIsStreaming);
   const isWaiting = useAppSelector(selectIsWaiting);
+  const wsProjects = useAppSelector((s: RootState) => s.workspaceProjects.projects);
+  const activeProjectId = useAppSelector((s: RootState) => s.workspaceProjects.activeProjectId);
+
+  // Build project path from the richest available source, in priority order.
+  const projectPath = useMemo(() => {
+    // 1. Thread carries its own path (set at chat creation or via setChatProject)
+    const fromThread = thread.esp32_projects_path?.trim();
+    if (fromThread) return fromThread;
+
+    // 2. Thread has a project_id — look up the path from workspaceProjects
+    if (thread.project_id) {
+      const byId = wsProjects.find((p) => p.id === thread.project_id);
+      const fromId = byId?.esp32_projects_path.trim();
+      if (fromId) return fromId;
+    }
+
+    // 3. Sidebar has an actively selected project
+    if (activeProjectId) {
+      const active = wsProjects.find((p) => p.id === activeProjectId);
+      const fromActive = active?.esp32_projects_path.trim();
+      if (fromActive) return fromActive;
+    }
+
+    // 4. Backend progress event (only live during an active build/flash)
+    const fromProgress = progressProjectPath?.trim();
+    if (fromProgress) return fromProgress;
+
+    return null;
+  }, [
+    thread.esp32_projects_path,
+    thread.project_id,
+    wsProjects,
+    activeProjectId,
+    progressProjectPath,
+  ]);
 
   const agentIsWorking = isStreaming || isWaiting;
 
@@ -64,38 +116,19 @@ export const TopologyMinimapSection: React.FC<TopologyMinimapSectionProps> = ({
       .join("\n");
   }, [messages]);
 
-  const { ready: codegenReady, checking: codegenChecking } = usePirCodegenReady({
-    chatId: chatId ?? null,
-    projectPath,
-    agentTurnId: lastAgentTurnId,
-    agentIsWorking,
-  });
-
-  const {
-    anchorTurnId,
-    effectiveProjectPath: pirProjectPath,
-    showBlock,
-  } = usePirChatAnchor({
-    chatId: chatId ?? null,
-    projectPath,
-    codegenReady,
-    agentTurnId: lastAgentTurnId,
-    agentIsWorking,
-  });
-
   const pir = usePirMaker({
     chatId: chatId ?? "",
-    projectPath: pirProjectPath,
+    projectPath: projectPath ?? undefined,
     pollMs: 12000,
-    enabled: showBlock && Boolean(chatId && pirProjectPath),
+    enabled: Boolean(chatId && projectPath),
     isAgentStreaming: isStreaming,
-    reanalyzeWhenAgentIdle: true,
-    agentTurnId: anchorTurnId,
+    reanalyzeWhenAgentIdle: autoUpdate,
+    agentTurnId: lastAgentTurnId,
     chatContext: pirChatContext,
     enableLiveWatch: false,
     skipMountAnalyze: true,
     hydrateOnMount: true,
-    codegenReady: codegenReady || Boolean(anchorTurnId),
+    codegenReady: true,
   });
 
   const graph = pir.graph;
@@ -104,11 +137,6 @@ export const TopologyMinimapSection: React.FC<TopologyMinimapSectionProps> = ({
   const isAnalyzing = pir.loading || pir.pirStatus?.status === "analyzing";
   const headline =
     pir.pir?.summary?.headline ?? pir.pirStatus?.summary_headline ?? null;
-
-  const validationErrors =
-    pir.validation?.issues.filter((i) => i.severity === "error").length ?? 0;
-  const validationWarnings =
-    pir.validation?.issues.filter((i) => i.severity === "warning").length ?? 0;
 
   const nodeConfidence = useMemo(() => {
     const map = new Map<string, number>();
@@ -122,7 +150,13 @@ export const TopologyMinimapSection: React.FC<TopologyMinimapSectionProps> = ({
     if (hasGraph) setOverlayOpen(true);
   }, [hasGraph]);
 
-  if (!showBlock || !chatId || !pirProjectPath) return null;
+  // Only hide if there's no chat or no project — no codegen gate.
+  if (!chatId || !projectPath) {
+    console.debug("[TopologyMinimap] hidden — chatId:", chatId, "projectPath:", projectPath,
+      "thread.esp32:", thread.esp32_projects_path, "thread.project_id:", thread.project_id,
+      "activeProjectId:", activeProjectId, "wsProjects:", wsProjects.length);
+    return null;
+  }
 
   return (
     <>
@@ -143,6 +177,25 @@ export const TopologyMinimapSection: React.FC<TopologyMinimapSectionProps> = ({
           ) : hasGraph ? (
             <span className={styles.badge}>{nodeCount}</span>
           ) : null}
+          <button
+            type="button"
+            className={classNames(styles.autoToggle, {
+              [styles.autoToggleActive]: autoUpdate,
+            })}
+            onClick={toggleAutoUpdate}
+            title={
+              autoUpdate
+                ? "Auto-update on — click to disable"
+                : "Auto-update off — click to enable"
+            }
+            aria-pressed={autoUpdate}
+          >
+            {autoUpdate ? (
+              <Zap size={11} strokeWidth={2.5} />
+            ) : (
+              <ZapOff size={11} strokeWidth={2.5} />
+            )}
+          </button>
           <ChevronDownIcon
             width={12}
             height={12}
@@ -154,9 +207,7 @@ export const TopologyMinimapSection: React.FC<TopologyMinimapSectionProps> = ({
         {open && (
           <div className={styles.content}>
             {/* subtitle */}
-            {codegenChecking ? (
-              <p className={styles.subtext}>Waiting for project code…</p>
-            ) : headline && !isAnalyzing ? (
+            {headline && !isAnalyzing ? (
               <p className={styles.headline}>{headline}</p>
             ) : null}
 
@@ -198,6 +249,17 @@ export const TopologyMinimapSection: React.FC<TopologyMinimapSectionProps> = ({
                 <span className={styles.spinner} />
                 <span className={styles.analyzingText}>Building topology…</span>
               </div>
+            ) : pir.error ? (
+              <div className={styles.empty}>
+                <Network
+                  size={18}
+                  strokeWidth={1.25}
+                  className={styles.emptyIcon}
+                />
+                <span className={styles.emptyText}>
+                  Analyze failed: {pir.error}
+                </span>
+              </div>
             ) : (
               <div className={styles.empty}>
                 <Network
@@ -207,23 +269,6 @@ export const TopologyMinimapSection: React.FC<TopologyMinimapSectionProps> = ({
                 />
                 <span className={styles.emptyText}>No topology yet</span>
               </div>
-            )}
-
-            {/* validation */}
-            {(validationErrors > 0 || validationWarnings > 0) && (
-              <Flex gap="2" mt="1" wrap="wrap">
-                {validationErrors > 0 && (
-                  <Text size="1" color="red">
-                    {validationErrors} error{validationErrors === 1 ? "" : "s"}
-                  </Text>
-                )}
-                {validationWarnings > 0 && (
-                  <Text size="1" color="amber">
-                    {validationWarnings} warning
-                    {validationWarnings === 1 ? "" : "s"}
-                  </Text>
-                )}
-              </Flex>
             )}
 
             {/* footer */}
